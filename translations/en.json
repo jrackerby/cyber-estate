@@ -1,0 +1,175 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cyber Estate — NVD API key",
+        "description": "Cyber Estate combines CISA/CDC feed monitoring, CISA KEV + NVD vulnerability matching, and network scanning under one integration.\n\nFirst, an NVD key: a free API key from nvd.nist.gov raises the rate limit from 5 to 50 requests per 30 seconds. Joins CISA KEV and NVD to what this estate actually runs, so a CVE is dispositioned against installed versions instead of counted because a vendor name matched. The key is stored in the config entry and never written to a YAML file.",
+        "data": {
+          "api_key": "NVD API key"
+        }
+      },
+      "scan_mode": {
+        "title": "How should the network be scanned?",
+        "menu_options": {
+          "local": "Scan from Home Assistant",
+          "agent": "Connect to a separate scanner"
+        }
+      },
+      "local": {
+        "title": "Scan from Home Assistant",
+        "description": "Home Assistant will run nmap itself. Service and version detection needs nmap's script engine, which this container does not ship — point the data directory at a copy of it, or leave it blank to scan ports only.",
+        "data": {
+          "targets": "Networks to scan",
+          "exclude": "Addresses to leave alone",
+          "datadir": "nmap data directory",
+          "stale_days": "Forget a device unseen for this many days",
+          "ssh_probe_enabled": "Check whether Home Assistant can SSH in",
+          "ssh_key": "SSH private key",
+          "ssh_users": "SSH usernames to try"
+        },
+        "data_description": {
+          "targets": "One or more addresses or ranges, separated by commas. For example 192.0.2.0/24",
+          "exclude": "Optional. Addresses that must never be scanned, separated by commas.",
+          "datadir": "A directory holding nse_main.lua, nselib/ and scripts/. Leave blank to disable service and version detection.",
+          "stale_days": "A device switched off for longer than this is forgotten, along with the date it was first seen. Be generous.",
+          "ssh_users": "Tried in order against each host running SSH; the first that works is reported."
+        }
+      },
+      "agent": {
+        "title": "Connect to the nmap scanner agent",
+        "description": "Enter the address of the host running the nmap-scanner agent and the token from its agent.conf.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "API token",
+          "use_tls": "Use HTTPS",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Replace the NVD API key",
+        "description": "The current key was refused by NVD, or you are rotating it. Paste the new key below; it is validated before it is saved. This does not touch your scan configuration.",
+        "data": {
+          "api_key": "NVD API key"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The key or token was refused.",
+      "cannot_connect": "Could not reach the service, or the response was not what was expected. Nothing was saved.",
+      "unsupported_schema": "The agent speaks a payload version this integration does not support. Update the integration or the agent.",
+      "invalid_target": "That is not an address, range or hostname nmap will accept.",
+      "no_nmap": "nmap is not available in this Home Assistant container, so it cannot scan from here. Use a separate scanner instead.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "Cyber Estate is already set up. Use Reconfigure to rotate the NVD key.",
+      "reauth_successful": "The new key was accepted and the integration reloaded."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Acknowledge unaccounted-for hosts",
+        "description": "Unknown hosts can never reach zero if one is legitimate but has no way to be marked as fine -- a multi-NIC device (a router, a hypervisor, a NAS with LAG) commonly answers ARP on an interface Home Assistant's device registry does not hold, and nothing here can tell that apart from an intruder without you saying so. List the MACs you have looked at and decided are accounted for; they still show up on the Unknown hosts entity's attributes, in their own list, so acknowledging one is never mistaken for it having disappeared.",
+        "data": {
+          "acknowledged_macs": "Acknowledged MACs"
+        },
+        "data_description": {
+          "acknowledged_macs": "One or more MAC addresses, separated by commas. Any format nmap or the device registry uses is accepted."
+        }
+      }
+    },
+    "error": {
+      "invalid_mac": "One or more of those is not a MAC address. Nothing was saved."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "actionable": {
+        "name": "Actionable vulnerabilities"
+      },
+      "integrity": {
+        "name": "Integrity"
+      },
+      "coverage": {
+        "name": "Unmapped devices"
+      },
+      "rollup": {
+        "name": "Worst disposition"
+      },
+      "recent_affected": {
+        "name": "Recent affected"
+      },
+      "unknown_hosts": {
+        "name": "Unknown hosts"
+      },
+      "hosts_tracked": {
+        "name": "Hosts tracked"
+      },
+      "hosts_up": {
+        "name": "Hosts up"
+      },
+      "exposed_services": {
+        "name": "Exposed services"
+      },
+      "last_scan": {
+        "name": "Last scan"
+      },
+      "last_port_scan": {
+        "name": "Last port scan"
+      },
+      "ip_address": {
+        "name": "IP address"
+      },
+      "operating_system": {
+        "name": "Operating system"
+      },
+      "last_seen": {
+        "name": "Last seen"
+      },
+      "open_ports": {
+        "name": "Open ports"
+      },
+      "never_port_scanned": {
+        "name": "Hosts never port scanned"
+      },
+      "service_census": {
+        "name": "Distinct services"
+      },
+      "ssh_access": {
+        "name": "SSH access from Home Assistant",
+        "state": {
+          "authorized": "Authorized",
+          "refused": "Key not accepted",
+          "host_key_changed": "Host key changed",
+          "unreachable": "Unreachable",
+          "no_ssh": "Not running SSH",
+          "never_scanned": "Never scanned"
+        }
+      }
+    },
+    "button": {
+      "scan_discovery": {
+        "name": "Scan now (discovery)"
+      },
+      "scan_standard": {
+        "name": "Scan now (standard)"
+      },
+      "scan_deep": {
+        "name": "Scan now (deep)"
+      }
+    },
+    "switch": {
+      "schedule_discovery": {
+        "name": "Discovery schedule"
+      },
+      "schedule_standard": {
+        "name": "Standard schedule"
+      },
+      "schedule_deep": {
+        "name": "Deep schedule"
+      }
+    }
+  }
+}

@@ -1,0 +1,213 @@
+"""Scan subsystem setup -- KAN-344 merge of the standalone network_inventory
+integration into cyber_estate.
+
+Local/agent branching, ConfigEntryNotReady handling, SSH prober wiring and
+device-removal semantics are preserved verbatim from the standalone
+integration's __init__.py. What changed is ownership: this module no longer
+owns a config entry, a manifest, or PLATFORMS -- cyber_estate's top-level
+__init__.py does, and calls into the functions here for the scan third of a
+combined entry. entry.runtime_data is now a dict of all three subsystems'
+coordinators, not this coordinator alone, so nothing here writes to it.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.device_registry import DeviceEntry
+
+from ..const import DOMAIN  # real top-level domain -- see scan/const.py's note
+from .api import NetworkInventoryClient
+from .const import (
+    CONF_DATADIR,
+    CONF_EXCLUDE,
+    CONF_HOST,
+    CONF_MODE,
+    CONF_PORT,
+    CONF_SSH_ENABLED,
+    CONF_SSH_KEY,
+    CONF_SSH_USERS,
+    CONF_STALE_DAYS,
+    CONF_TARGETS,
+    CONF_TOKEN,
+    CONF_USE_TLS,
+    CONF_VERIFY_SSL,
+    DEFAULT_STALE_DAYS,
+    MODE_LOCAL,
+)
+from .coordinator import AgentCoordinator, LocalCoordinator, NetworkInventoryCoordinator
+from .scan_service import async_register_services, async_unregister_services
+from .scanner import find_nmap
+from .ssh_probe import SshProber, find_ssh
+from .store import InventoryStore
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _split(value: str | list | None) -> list[str]:
+    """Accept either a list or a comma-separated string.
+
+    The config flow collects these as one text field because a repeating field
+    is a poor fit for 'the two subnets I scan', but options set through YAML or
+    a future import may arrive as a real list. Handling both here means no
+    caller has to know which it has.
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def _dir_exists(path: str) -> bool:
+    import os
+
+    return os.path.isdir(path)
+
+
+async def async_setup_scan(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> NetworkInventoryCoordinator:
+    """Set up one scanner -- local or remote -- from the merged config entry.
+
+    Raises ConfigEntryNotReady on failure, so a scanner that is merely
+    rebooting retries the WHOLE cyber_estate entry instead of leaving a
+    half-configured integration behind. That is a slightly wider blast
+    radius than the standalone integration had (a scan-only outage now
+    also retries feeds/CVE setup), accepted because a merged entry has one
+    setup lifecycle by construction -- see the merge note in KAN-344.
+    """
+    if entry.data.get(CONF_MODE) == MODE_LOCAL:
+        coordinator = await _async_setup_local(hass, entry)
+    else:
+        coordinator = _setup_agent(hass, entry)
+
+    await coordinator.async_config_entry_first_refresh()
+    async_register_services(hass)
+    return coordinator
+
+
+def _setup_agent(hass: HomeAssistant, entry: ConfigEntry) -> AgentCoordinator:
+    client = NetworkInventoryClient(
+        session=async_get_clientsession(hass),
+        host=entry.data[CONF_HOST],
+        port=entry.data[CONF_PORT],
+        token=entry.data[CONF_TOKEN],
+        use_tls=entry.data.get(CONF_USE_TLS, False),
+        verify_ssl=entry.data.get(CONF_VERIFY_SSL, True),
+    )
+    return AgentCoordinator(hass, client, config_entry_id=entry.entry_id)
+
+
+async def _async_setup_local(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> LocalCoordinator:
+    """Wire up in-container scanning.
+
+    THE BINARY IS RESOLVED AT SETUP, NOT PER SCAN, and its absence is a setup
+    failure rather than a scan failure. An entry that loads cleanly and then
+    fails every sweep is worse than one that refuses: by the time anything goes
+    wrong the operator has left the dialog and the reason is only in the log.
+    """
+    binary = await hass.async_add_executor_job(find_nmap)
+    if not binary:
+        raise ConfigEntryNotReady(
+            "nmap is not available in this Home Assistant container"
+        )
+
+    datadir = entry.data.get(CONF_DATADIR) or None
+    if datadir:
+        exists = await hass.async_add_executor_job(_dir_exists, datadir)
+        if not exists:
+            # NOT fatal, and deliberately so: port scanning still works without
+            # the script engine. But it is logged loudly and carried on the
+            # scanner, because every service-detection scan will now refuse,
+            # and "no services found" must never be the way that is discovered.
+            _LOGGER.error(
+                "nmap data directory %s does not exist; service and version "
+                "detection will be unavailable until it does",
+                datadir,
+            )
+            datadir = None
+
+    scanner_binary = binary
+    from .scanner import NmapScanner
+
+    scanner = NmapScanner(hass, scanner_binary, datadir=datadir)
+    store = InventoryStore(hass, entry.entry_id)
+    await store.async_load()
+
+    prober = None
+    if entry.data.get(CONF_SSH_ENABLED):
+        ssh_binary = await hass.async_add_executor_job(find_ssh)
+        key = entry.data.get(CONF_SSH_KEY)
+        users = _split(entry.data.get(CONF_SSH_USERS))
+        if ssh_binary and key and users:
+            prober = SshProber(hass, ssh_binary, key, users)
+        else:
+            _LOGGER.warning(
+                "ssh probing was requested but is not configurable "
+                "(ssh=%s, key=%s, users=%s); it will be skipped",
+                bool(ssh_binary), bool(key), len(users),
+            )
+
+    return LocalCoordinator(
+        hass,
+        scanner=scanner,
+        store=store,
+        targets=_split(entry.data.get(CONF_TARGETS)),
+        exclude=_split(entry.data.get(CONF_EXCLUDE)),
+        stale_days=int(entry.data.get(CONF_STALE_DAYS, DEFAULT_STALE_DAYS)),
+        prober=prober,
+        config_entry_id=entry.entry_id,
+    )
+
+
+def async_unload_scan(hass: HomeAssistant) -> None:
+    """Unregister the scan services. Platform unload is the top level's job."""
+    async_unregister_services(hass)
+
+
+async def async_remove_scan_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Forget the stored inventory when the merged entry itself is removed.
+
+    Only on REMOVAL, never on unload. An unload happens on every restart and
+    every reload; deleting the inventory there would destroy `first_seen` for
+    the whole estate on a routine restart, and no amount of rescanning brings
+    it back.
+    """
+    if entry.data.get(CONF_MODE) == MODE_LOCAL:
+        await InventoryStore(hass, entry.entry_id).async_remove()
+
+
+async def async_remove_scan_device(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    device: DeviceEntry,
+    coordinator: NetworkInventoryCoordinator,
+) -> bool:
+    """Allow deleting an endpoint that is no longer on the network.
+
+    ENDPOINTS ARE NEVER DELETED AUTOMATICALLY. A host that stops answering has
+    two possible explanations -- it left, or it is switched off -- and the
+    scanner cannot tell them apart. Removing its device on the first missed
+    scan would silently destroy its history, and re-creating it on return
+    would make "when did this first appear" meaningless. So a departed
+    endpoint's entities go UNAVAILABLE and stay, and the decision to forget it
+    is left to the person who knows which of the two happened.
+
+    The scanner device itself is refused: deleting it would strand every
+    endpoint that points at it as its `via_device`.
+    """
+    ours = {i[1] for i in device.identifiers if i[0] == DOMAIN}
+    if entry.entry_id in ours:
+        return False
+
+    live = set(coordinator.data.endpoints) if coordinator.data else set()
+    # Refuse while the endpoint is still being seen -- it would reappear on the
+    # next refresh, which reads as the delete having silently failed.
+    return not (ours & live)

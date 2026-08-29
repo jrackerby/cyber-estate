@@ -1,0 +1,637 @@
+"""Fetch the inventory and join it to what Home Assistant already knows.
+
+THE JOIN IS THE POINT OF THIS INTEGRATION. A scanner alone can say "78 things
+answered"; Home Assistant alone can say how many device records it holds.
+Neither can answer the question that matters -- *is there something on this
+network that nothing here accounts for* -- because they key on different
+things. The scanner knows MAC and IP; the registry knows manufacturer, model
+and version. MAC is the one identifier both sides hold, so it is the join key.
+
+THE DECISION ITSELF LIVES IN `join.py`, which imports nothing from Home
+Assistant and is therefore testable directly. This module does only the things
+that genuinely need the running instance: obtain a scan, and read the registry.
+
+TWO MODES, ONE COORDINATOR. `agent` polls a remote scanner over HTTP; `local`
+runs nmap in this container and keeps the inventory itself. They are branches
+here rather than two components because everything downstream -- the join, the
+sensors, the census, the device registry -- is identical either way. Which end
+holds the nmap process is not a difference the entities should be able to see.
+
+IN LOCAL MODE THE COORDINATOR TICK IS NOT A SCAN. It fires every few minutes
+and asks whether either sweep is DUE. Scanning on every tick would put a
+continuous SYN flood on the estate, and tying the expensive service scan to the
+cheap liveness sweep is the exact conflation that erased a night of service
+data on the old scanner.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
+
+from .api import (
+    CannotConnect,
+    Inventory,
+    InvalidAuth,
+    NetworkInventoryClient,
+    NoInventoryYet,
+    UnsupportedSchema,
+)
+from .const import (
+    CONF_ACKNOWLEDGED_MACS,
+    LOCAL_DISCOVERY_INTERVAL,
+    LOCAL_SERVICE_INTERVAL,
+    LOCAL_TICK,
+    SCAN_NS,
+    SSH_PROBE_INTERVAL,
+    UPDATE_INTERVAL,
+)
+from .join import JoinResult, join_hosts, normalise_mac
+from .options import PROFILES as OPTION_PROFILES
+from .scanner import NmapScanner, ScanBusy, ScanError
+from .services_view import census, host_was_port_scanned
+from .ssh_probe import SshProber, SshResult, host_runs_ssh, ssh_ports
+from .store import InventoryStore
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class InventoryView:
+    """The joined result. Everything the entities read comes from here."""
+
+    inventory: Inventory
+    join: JoinResult
+    newest_port_scan: Any = None  # datetime | None
+    # Per-profile timer/scan state. EMPTY IS A VALID VALUE and means the
+    # control surface is unavailable, not that the scanner is idle -- the
+    # switches and buttons read it and must not invent a state from a gap.
+    profiles: dict[str, Any] = field(default_factory=dict)
+    # SSH probe results keyed by normalised MAC. Absent means not probed.
+    ssh: dict[str, SshResult] = field(default_factory=dict)
+    scanning: bool = False
+    current_scan: str | None = None
+    # Set when service detection is impossible, so the UI can say why rather
+    # than showing every host with no services and no explanation.
+    service_detection_error: str | None = None
+
+    @property
+    def endpoints(self) -> dict[str, dict[str, Any]]:
+        """Scanned hosts keyed by NORMALISED MAC.
+
+        Hosts without a usable MAC are dropped rather than given a synthetic
+        key: an identity derived from an IP changes with the lease, which
+        would silently replace a device rather than update it.
+        """
+        out: dict[str, dict[str, Any]] = {}
+        for host in self.inventory.hosts.values():
+            mac = normalise_mac(host.get("mac"))
+            if mac:
+                out[mac] = host
+        return out
+
+    @property
+    def service_census(self) -> dict[str, Any]:
+        return census(self.inventory.hosts)
+
+    # Convenience passthroughs so the entities do not reach two levels deep.
+    @property
+    def unknown_count(self) -> int:
+        return self.join.unknown_count
+
+    @property
+    def unmatched(self) -> list[dict[str, Any]]:
+        return self.join.unmatched
+
+    @property
+    def acknowledged_count(self) -> int:
+        return self.join.acknowledged_count
+
+    @property
+    def acknowledged(self) -> list[dict[str, Any]]:
+        return self.join.acknowledged
+
+    @property
+    def matched(self) -> int:
+        return self.join.matched
+
+    @property
+    def unjoinable(self) -> int:
+        return self.join.unjoinable
+
+    @property
+    def hosts_up(self) -> int:
+        return self.join.hosts_up
+
+    @property
+    def exposed_services(self) -> int:
+        return self.join.exposed_services
+
+    @property
+    def hosts_with_port_data(self) -> int:
+        return self.join.hosts_with_port_data
+
+    @property
+    def hosts_never_port_scanned(self) -> int:
+        """Hosts nobody has ever port-scanned.
+
+        Published as a first-class number rather than derived by subtraction,
+        because it is the size of this instrument's blind spot and an operator
+        should not have to compute it to find out how much of the estate the
+        service answers do not cover.
+        """
+        return sum(
+            1 for h in self.inventory.hosts.values() if not host_was_port_scanned(h)
+        )
+
+
+class NetworkInventoryCoordinator(DataUpdateCoordinator[InventoryView]):
+    """Base: holds the join and the registry read, whatever the source."""
+
+    def __init__(
+        self, hass: HomeAssistant, update_interval, config_entry_id: str | None = None
+    ) -> None:
+        super().__init__(
+            hass, _LOGGER, name=SCAN_NS, update_interval=update_interval
+        )
+        # Needed by `_known_macs` to recognise its own device records. Optional
+        # so a caller that has not got one yet degrades to the old behaviour
+        # rather than crashing -- but every real caller passes it.
+        self.config_entry_id = config_entry_id
+
+    def _known_macs(self) -> list[str]:
+        """Every MAC the device registry holds, EXCEPT the ones we created.
+
+        A PATTERN VALIDATED AGAINST ITSELF IS NOT VALIDATED (LAW 9). This
+        integration creates a device per scanned endpoint, carrying that
+        endpoint's MAC as a network connection -- so a naive read of the
+        registry finds every host we have ever scanned already "known", by us,
+        and `unknown_hosts` decays to zero as the inventory grows. The detector
+        then reports a clean network precisely because it has been running a
+        while, which is the failure it exists to prevent.
+
+        This is KAN-294's circularity arriving from a second source: there it
+        was the scanner's own MQTT discovery, here it is our own device
+        records. The rule is the same -- a device known ONLY to us is not
+        corroboration. A device we share with another integration is, so the
+        test is on sole ownership rather than on our presence.
+
+        Handed over unnormalised on purpose: `join_hosts` normalises both sides
+        through one function, so this cannot introduce a format mismatch.
+        """
+        registry = dr.async_get(self.hass)
+        ours = self.config_entry_id
+        return [
+            conn_value
+            for device in registry.devices.values()
+            if not (ours and device.config_entries == {ours})
+            for conn_type, conn_value in device.connections
+            if conn_type == dr.CONNECTION_NETWORK_MAC
+        ]
+
+    def _acknowledged_macs(self) -> list[str]:
+        """MACs Joel has explicitly decided are fine, from the options flow.
+
+        KAN-294's first defect: `unknown_hosts` had no way to reach zero for
+        a real, explained case (a multi-NIC device whose ARP-visible MAC
+        differs from the one the device registry holds -- the UDM Pro).
+        Read live off the config entry on every refresh rather than cached
+        at setup, so acknowledging a host takes effect on the coordinator's
+        own next tick without a full entry reload.
+        """
+        if not self.config_entry_id:
+            return []
+        entry = self.hass.config_entries.async_get_entry(self.config_entry_id)
+        if entry is None:
+            return []
+        return list(entry.options.get(CONF_ACKNOWLEDGED_MACS, []))
+
+    # -- control surface -----------------------------------------------------
+    #
+    # DECLARED ON THE BASE so the buttons and switches never branch on mode.
+    # They previously reached into `coordinator.client`, which only exists in
+    # agent mode -- a control that works in one mode and raises AttributeError
+    # in the other is the kind of fork this component is written to avoid.
+
+    async def async_request_scan(self, profile: str) -> None:
+        raise NotImplementedError
+
+    async def async_set_schedule(self, profile: str, enabled: bool) -> None:
+        raise NotImplementedError
+
+
+class AgentCoordinator(NetworkInventoryCoordinator):
+    """Polls a remote scanner agent over HTTP."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: NetworkInventoryClient,
+        config_entry_id: str | None = None,
+    ) -> None:
+        super().__init__(hass, UPDATE_INTERVAL, config_entry_id)
+        self.client = client
+
+    async def _async_update_data(self) -> InventoryView:
+        try:
+            inventory = await self.client.async_get_inventory()
+        except InvalidAuth as err:
+            raise UpdateFailed(f"agent rejected the token: {err}") from err
+        except NoInventoryYet as err:
+            raise UpdateFailed(
+                "agent is reachable but no scan has completed yet"
+            ) from err
+        except UnsupportedSchema as err:
+            raise UpdateFailed(str(err)) from err
+        except CannotConnect as err:
+            # Every entity goes unavailable, and that is the honest outcome: we
+            # did not measure the network, so we must not publish a number
+            # about it. A zero here would render as "nothing unknown on your
+            # network" at exactly the moment we can no longer tell.
+            raise UpdateFailed(f"cannot reach agent: {err}") from err
+
+        # Status is fetched AFTER the inventory and cannot fail the refresh:
+        # async_get_status swallows its own transport errors and returns {}.
+        # Losing the control surface must not take the data down with it.
+        profiles = await self.client.async_get_status()
+
+        result = join_hosts(
+            inventory.hosts, self._known_macs(), self._acknowledged_macs()
+        )
+        return InventoryView(
+            inventory=inventory,
+            join=result,
+            newest_port_scan=_newest_port_scan(inventory.hosts),
+            profiles=profiles,
+        )
+
+    async def async_request_scan(self, profile: str) -> None:
+        await self.client.async_request_scan(profile)
+
+    async def async_set_schedule(self, profile: str, enabled: bool) -> None:
+        await self.client.async_set_schedule(profile, enabled)
+
+
+class LocalCoordinator(NetworkInventoryCoordinator):
+    """Runs nmap in this container and owns the inventory."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        scanner: NmapScanner,
+        store: InventoryStore,
+        targets: list[str],
+        exclude: list[str],
+        stale_days: int,
+        prober: SshProber | None = None,
+        config_entry_id: str | None = None,
+    ) -> None:
+        super().__init__(hass, LOCAL_TICK, config_entry_id)
+        self.scanner = scanner
+        self.store = store
+        self.targets = targets
+        self.exclude = exclude
+        self.stale_days = stale_days
+        self.prober = prober
+
+        self._last_discovery: datetime | None = None
+        self._last_service_scan: datetime | None = None
+        self._last_ssh_probe: datetime | None = None
+        self._ssh: dict[str, SshResult] = {}
+        self._service_error: str | None = None
+        self._enabled: dict[str, bool] = {"discovery": True, "standard": True}
+        # Which sweeps are in flight. The scanner's lock already serialises
+        # nmap itself; this stops a five-minute tick from queueing a hundred
+        # coroutines behind one long scan.
+        self._running: dict[str, bool] = {}
+        self._clocks_seeded = False
+
+    # -- scheduling ----------------------------------------------------------
+
+    def _seed_clocks_from_store(self) -> None:
+        """Recover the due-clocks from persisted scan timestamps, once.
+
+        THE CLOCKS WERE IN MEMORY ONLY, so every Home Assistant restart made
+        both sweeps immediately due and fired a full service scan of the whole
+        subnet. Measured: a restart put a `-sV` sweep on the wire within
+        seconds, and a day with several restarts would scan the estate several
+        times over for no new information.
+
+        The store already records when each kind of scan last landed, so the
+        answer was persisted all along and merely not read back. Discovery is
+        seeded from `last_scan` (any sweep refreshes liveness) and the service
+        sweep from `last_port_scan` (only a port scan refreshes ports) --
+        the same two-clock distinction the sensors expose.
+        """
+        if self._clocks_seeded:
+            return
+        self._clocks_seeded = True
+        if self._last_discovery is None:
+            self._last_discovery = dt_util.parse_datetime(self.store.last_scan or "")
+        if self._last_service_scan is None:
+            self._last_service_scan = dt_util.parse_datetime(
+                self.store.last_port_scan or ""
+            )
+
+    def _due(self, profile: str, last: datetime | None, interval) -> bool:
+        if not self._enabled.get(profile, True):
+            return False
+        if last is None:
+            return True
+        return dt_util.utcnow() - last >= interval
+
+    async def _async_update_data(self) -> InventoryView:
+        """One tick. Launches whichever sweeps are due and returns immediately.
+
+        A TICK MUST NEVER AWAIT A SCAN. The first refresh happens inside
+        `async_config_entry_first_refresh`, and a service sweep of a /24 runs
+        for many minutes -- awaiting one there blocks integration setup past
+        Home Assistant's patience and the entry fails to load, which reads as
+        a broken integration rather than as a scan still running. The same is
+        true of every later tick: the coordinator's job is to publish what is
+        known now, not to be the thing that takes a quarter of an hour.
+
+        Sweeps therefore run as background tasks and call
+        `async_set_updated_data` when they finish. The scanner's own lock makes
+        a second launch harmless -- it raises ScanBusy and is swallowed -- so a
+        fast tick interval cannot pile scans on top of each other.
+        """
+        await self.store.async_load()
+        self._seed_clocks_from_store()
+
+        # Service scan is checked first despite being the more expensive sweep --
+        # it also runs on the longer interval, so this ordering is what makes it
+        # due least often, not a cost ordering. Only one scan is launched per tick.
+        if self._due("standard", self._last_service_scan, LOCAL_SERVICE_INTERVAL):
+            self._launch("service scan", self._run_service_scan())
+        elif self._due("discovery", self._last_discovery, LOCAL_DISCOVERY_INTERVAL):
+            self._launch("discovery", self._run_discovery())
+
+        if self.prober and self._due("ssh", self._last_ssh_probe, SSH_PROBE_INTERVAL):
+            self._launch("ssh probe", self._run_ssh_probe())
+
+        # A tick that scanned nothing still republishes: the registry may have
+        # changed underneath us, and the join is what turns that into an answer.
+        return self._build_view()
+
+    def _launch(self, label: str, coro) -> None:
+        """Run a sweep in the background and publish when it lands.
+
+        The due-clock is moved by the sweep itself, not here, so a launch that
+        fails to start leaves the sweep due rather than silently skipping it
+        until the next interval.
+        """
+        if self._running.get(label):
+            coro.close()
+            return
+
+        async def _wrap() -> None:
+            self._running[label] = True
+            try:
+                await coro
+            except Exception:  # noqa: BLE001 - a sweep must not kill the tick
+                _LOGGER.exception("%s failed", label)
+            finally:
+                self._running[label] = False
+                # PUBLISH WHATEVER HAPPENED, including a failure: the view
+                # carries `scanning` and the service error, and leaving it
+                # unpublished would show a scan running forever.
+                self.async_set_updated_data(self._build_view())
+
+        self.hass.async_create_task(_wrap())
+
+    async def _run_discovery(self) -> None:
+        try:
+            result = await self.scanner.async_scan(
+                self.targets,
+                exclude=self.exclude,
+                discovery_only=True,
+                label="discovery",
+            )
+        except ScanBusy:
+            # Not an error. An on-demand scan is running and will refresh
+            # liveness itself; retrying next tick is correct.
+            return
+        except ScanError as err:
+            _LOGGER.warning("discovery sweep failed: %s", err)
+            return
+        self._last_discovery = dt_util.utcnow()
+        self.store.apply_scan(
+            result.hosts, complete=result.complete, stale_days=self.stale_days
+        )
+
+    async def _run_service_scan(self) -> None:
+        keys = list(OPTION_PROFILES["standard"])
+        try:
+            result = await self.scanner.async_scan(
+                self.targets,
+                option_keys=keys,
+                exclude=self.exclude,
+                label="service scan",
+            )
+        except ScanBusy:
+            return
+        except ScanError as err:
+            # RECORDED ON THE VIEW, not only in the log. Without the script
+            # engine every service scan fails identically and forever, and a
+            # log line nobody reads would leave the estate looking like it
+            # simply runs no services.
+            self._service_error = str(err)
+            _LOGGER.warning("service scan failed: %s", err)
+            # Still mark it attempted, so a permanently broken scan does not
+            # retry on every single tick.
+            self._last_service_scan = dt_util.utcnow()
+            return
+
+        self._service_error = None
+        self._last_service_scan = dt_util.utcnow()
+        # A liveness sweep is implied by a service scan, so the discovery clock
+        # resets too -- otherwise the next tick immediately runs a redundant one.
+        self._last_discovery = self._last_service_scan
+        self.store.apply_scan(
+            result.hosts, complete=result.complete, stale_days=self.stale_days
+        )
+
+    async def _run_ssh_probe(self) -> None:
+        """Probe every host seen offering ssh. Never probes an unscanned host.
+
+        THE INTERVAL IS ONLY SPENT IF THERE WAS SOMETHING TO PROBE. On a fresh
+        entry the first tick fires before any scan has landed, so the probe
+        finds an empty inventory -- and stamping the clock there would mean the
+        first real answer arrived six hours later, with every SSH host reading
+        unknown in between. Measured on exactly that first setup.
+        """
+        assert self.prober is not None
+        results: dict[str, SshResult] = {}
+        candidates = 0
+        for host in self.store.hosts.values():
+            mac = normalise_mac(host.get("mac"))
+            address = host.get("ip")
+            if not mac or not address:
+                continue
+            if host_runs_ssh(host) is not True:
+                # Nothing to probe. The sensor derives `no_ssh` versus
+                # `never_scanned` from the host record itself, so recording a
+                # placeholder here would only give it a second, staler source.
+                continue
+            candidates += 1
+            ports = ssh_ports(host) or [22]
+            try:
+                results[mac] = await self.prober.async_probe(address, ports[0])
+            except Exception as err:  # noqa: BLE001 - one host must not stop the pass
+                _LOGGER.debug("ssh probe failed for %s: %s", address, err)
+
+        if not candidates:
+            # Nothing to measure, so nothing was measured. Leaving the clock
+            # unstamped keeps the probe due, and the next tick after the first
+            # scan lands runs it for real.
+            return
+
+        self._last_ssh_probe = dt_util.utcnow()
+        self._ssh = results
+
+    # -- on demand -----------------------------------------------------------
+
+    async def async_run_custom_scan(
+        self,
+        targets: list[str] | None = None,
+        option_keys: list[str] | None = None,
+        label: str = "custom scan",
+    ):
+        """Run a user-requested scan now and fold the result in.
+
+        Raises ScanBusy / ScanError / InvalidScanRequest to the caller so the
+        service call reports what happened. A scan that silently did nothing is
+        indistinguishable from one that found nothing.
+        """
+        result = await self.scanner.async_scan(
+            targets or self.targets,
+            option_keys=option_keys,
+            exclude=self.exclude,
+            label=label,
+        )
+        await self.store.async_load()
+        # AN ON-DEMAND SCAN NEVER PRUNES. It is commonly aimed at one host, and
+        # letting a single-host scan age every other record toward deletion
+        # would quietly forget the network a scan at a time.
+        self.store.apply_scan(result.hosts, complete=result.complete, stale_days=None)
+        if any(h.get("ports_scanned") for h in result.hosts.values()):
+            self._last_service_scan = dt_util.utcnow()
+        self.async_set_updated_data(self._build_view())
+        return result
+
+    async def async_request_scan(self, profile: str) -> None:
+        """Run a named profile now.
+
+        `discovery` is not expressible through the option vocabulary -- it is
+        the ABSENCE of port scanning rather than a modifier on it -- so it is
+        dispatched separately rather than being given a fake option set.
+        """
+        if profile == "discovery":
+            await self.scanner.async_scan(
+                self.targets, exclude=self.exclude,
+                discovery_only=True, label="discovery",
+            )
+            self._last_discovery = dt_util.utcnow()
+            await self.store.async_load()
+            self.async_set_updated_data(self._build_view())
+            return
+        keys = list(OPTION_PROFILES.get(profile, ()))
+        await self.async_run_custom_scan(option_keys=keys, label=profile)
+
+    async def async_set_schedule(self, profile: str, enabled: bool) -> None:
+        """Enable or disable a scheduled sweep.
+
+        A DISABLED SWEEP IS SUPPRESSED, NEVER RESCHEDULED FAR AHEAD. Encoding
+        "off" as a due-time in the year 3000 would make `timer_enabled` a guess
+        derived from a date, and the switch would then report whatever that
+        guess happened to say rather than what was asked for.
+        """
+        self._enabled[profile] = enabled
+        self.async_set_updated_data(self._build_view())
+
+    # -- view ----------------------------------------------------------------
+
+    def _build_view(self) -> InventoryView:
+        hosts = self.store.hosts
+        generated = _epoch(self.store.last_scan)
+        inventory = Inventory(
+            schema_version=1, generated_at=generated, hosts=hosts
+        )
+        return InventoryView(
+            inventory=inventory,
+            join=join_hosts(hosts, self._known_macs(), self._acknowledged_macs()),
+            newest_port_scan=dt_util.parse_datetime(self.store.last_port_scan or ""),
+            profiles=self._profile_state(),
+            ssh=dict(self._ssh),
+            scanning=self.scanner.busy,
+            current_scan=self.scanner.current_scan,
+            service_detection_error=self._service_error,
+        )
+
+    def _profile_state(self) -> dict[str, Any]:
+        """Schedule state in the same shape the agent reports, so the switches
+        and buttons do not need to know which mode they are running in."""
+        discovery_on = self._enabled.get("discovery", True)
+        standard_on = self._enabled.get("standard", True)
+        return {
+            "discovery": {
+                "timer_enabled": discovery_on,
+                # NEXT RUN IS NULL WHEN SUPPRESSED, never a stale date. A time
+                # printed beside a disabled schedule reads as one that is still
+                # coming.
+                "next_run": _iso(self._last_discovery, LOCAL_DISCOVERY_INTERVAL)
+                if discovery_on
+                else None,
+                "last_run": _iso(self._last_discovery, None),
+                "scanning": self.scanner.current_scan == "discovery",
+                "last_result": None,
+            },
+            "standard": {
+                "timer_enabled": standard_on,
+                "next_run": _iso(self._last_service_scan, LOCAL_SERVICE_INTERVAL)
+                if standard_on
+                else None,
+                "last_run": _iso(self._last_service_scan, None),
+                "scanning": self.scanner.current_scan == "service scan",
+                "last_result": "failed" if self._service_error else None,
+            },
+        }
+
+
+def _epoch(iso: str | None) -> int:
+    parsed = dt_util.parse_datetime(iso or "")
+    if parsed is None:
+        return 0
+    return int(parsed.timestamp())
+
+
+def _iso(when: datetime | None, add) -> str | None:
+    if when is None:
+        return None
+    return (when + add).isoformat() if add else when.isoformat()
+
+
+def _newest_port_scan(hosts: dict[str, dict[str, Any]]) -> Any:
+    """Most recent time any host had its PORTS observed.
+
+    Not the same as inventory freshness. A liveness-only sweep refreshes the
+    inventory hourly while port data ages for a day or more, so tracking only
+    the inventory would report a healthy feed while service scanning was dead.
+    """
+    newest = None
+    for host in hosts.values():
+        raw = host.get("ports_scanned_at")
+        if not raw:
+            continue
+        parsed = dt_util.parse_datetime(raw)
+        if parsed and (newest is None or parsed > newest):
+            newest = parsed
+    return newest

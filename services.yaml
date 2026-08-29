@@ -1,0 +1,176 @@
+# Home Assistant renders these fields as labelled toggles, so this file IS the
+# checkbox list -- in Developer Tools, in the automation editor and behind the
+# dashboard card alike.
+#
+# EVERY FIELD HERE MUST EXIST IN options.SCAN_OPTIONS AND VICE VERSA. A box
+# offered here that the builder rejects is a control that looks live and does
+# nothing; an option the builder accepts but which is not offered here is
+# unreachable. tools/test_network_inventory_scan.py asserts the two sides match
+# exactly, because nothing about editing one of them prompts you to edit the
+# other.
+
+custom_scan:
+  name: Run a custom scan
+  description: >-
+    Scan the network now, choosing what to look for. Every box costs time;
+    with none ticked this just checks which ports are open.
+  fields:
+    targets:
+      name: Scan only these addresses
+      description: >-
+        Optional. An address, a range like 192.0.2.0/24, or several separated
+        by commas. Leave empty to scan everything this integration is
+        configured for.
+      example: "203.0.113.0/24"
+      required: false
+      selector:
+        text:
+    service_versions:
+      name: Detect service names and versions
+      description: >-
+        Ask each open port what it is running, e.g. "OpenSSH 10.0p2" rather
+        than just "port 22 is open". This is what makes a service searchable.
+      default: false
+      selector:
+        boolean:
+    os_detect:
+      name: Identify the operating system
+      description: >-
+        Guess each device's operating system from how it answers. Accurate for
+        computers, often inconclusive for appliances.
+      default: false
+      selector:
+        boolean:
+    all_ports:
+      name: Scan all 65,535 ports
+      description: >-
+        Check every port instead of the 1,000 most common ones. Finds services
+        on unusual ports; takes far longer.
+      default: false
+      selector:
+        boolean:
+    default_scripts:
+      name: Run safe detection scripts
+      description: >-
+        Collect extra detail such as TLS certificates and HTTP page titles.
+        Read-only -- nothing is changed on the target.
+      default: false
+      selector:
+        boolean:
+    udp_ports:
+      name: Include common UDP services
+      description: >-
+        Also check the 50 most common UDP ports, where DNS, mDNS and SNMP live.
+        UDP has no handshake, so this is slow and less certain.
+      default: false
+      selector:
+        boolean:
+    skip_ping:
+      name: Scan addresses that ignore ping
+      description: >-
+        Treat every address as alive instead of skipping ones that do not answer
+        a ping. Finds devices behind a firewall that drops pings; wastes time on
+        empty addresses.
+      default: false
+      selector:
+        boolean:
+    traceroute:
+      name: Trace the network path
+      description: >-
+        Record the route packets take to each device. Useful for seeing which
+        VLAN or gateway a device sits behind.
+      default: false
+      selector:
+        boolean:
+    fast_timing:
+      name: Scan faster, accept less certainty
+      description: >-
+        Finishes sooner but is more likely to miss a slow device, or report a
+        port as closed when it is filtered. Cannot be combined with "Scan
+        slower, retry more".
+      default: false
+      selector:
+        boolean:
+    thorough_timing:
+      name: Scan slower, retry more
+      description: >-
+        Retry harder before giving up on a port. Use when results look
+        inconsistent between scans, or on congested wireless. Cannot be combined
+        with "Scan faster".
+      default: false
+      selector:
+        boolean:
+
+scan_device:
+  name: Rescan a device now
+  description: >-
+    Scan one device you pick from the list, using its current address. Useful
+    for phones and tablets, which are usually asleep when the nightly scan runs
+    and so are never given service data by it.
+  fields:
+    device_id:
+      name: Device
+      description: The device to scan.
+      required: true
+      selector:
+        device:
+          integration: cyber_estate
+    service_versions:
+      name: Detect service names and versions
+      description: >-
+        Ask each open port what it is running. Usually what you want when
+        rescanning a single device.
+      default: true
+      selector:
+        boolean:
+    os_detect:
+      name: Identify the operating system
+      description: Guess the device's operating system from how it answers.
+      default: false
+      selector:
+        boolean:
+    all_ports:
+      name: Scan all 65,535 ports
+      description: >-
+        Check every port instead of the 1,000 most common ones. On a single
+        device this is usually affordable.
+      default: false
+      selector:
+        boolean:
+    default_scripts:
+      name: Run safe detection scripts
+      description: Collect extra detail such as TLS certificates and page titles.
+      default: false
+      selector:
+        boolean:
+    udp_ports:
+      name: Include common UDP services
+      description: Also check the 50 most common UDP ports. Slow and less certain.
+      default: false
+      selector:
+        boolean:
+    skip_ping:
+      name: Scan even if it ignores ping
+      description: >-
+        Useful when the device is known to be on but does not answer a ping.
+      default: false
+      selector:
+        boolean:
+    traceroute:
+      name: Trace the network path
+      description: Record the route packets take to this device.
+      default: false
+      selector:
+        boolean:
+    fast_timing:
+      name: Scan faster, accept less certainty
+      description: Cannot be combined with "Scan slower, retry more".
+      default: false
+      selector:
+        boolean:
+    thorough_timing:
+      name: Scan slower, retry more
+      description: Cannot be combined with "Scan faster".
+      default: false
+      selector:
+        boolean:

@@ -1,0 +1,192 @@
+"""Pure feed projection for estate_feeds.
+
+THIS MODULE IMPORTS NOTHING FROM `homeassistant`, DELIBERATELY, and the parse
+gate asserts it (Playbook 16.1). It takes bytes in and returns dicts out, so
+it can be exercised on a plain python3 with no live state and no restart.
+
+It also OWNS NO NETWORK. The caller fetches; this only projects. That split is
+what makes the timeout enforceable -- a parser that fetches has to be trusted
+to bound itself, and the old component was not.
+"""
+
+from __future__ import annotations
+
+from datetime import timezone
+from typing import Any
+
+import feedparser
+from dateutil import parser as _date_parser
+
+# Keys carrying a date that the old component reformatted before storing.
+DATE_KEYS = ("published", "updated", "created", "expired")
+
+# The old component skipped any key containing this substring -- feedparser
+# emits `published_parsed` / `updated_parsed` struct_time objects that are not
+# JSON-serialisable into a state attribute.
+SKIP_SUBSTRING = "parsed"
+
+
+def format_date(value: str, date_format: str) -> str:
+    """Reproduce the old component's date handling EXACTLY.
+
+    dateutil.parser.parse() then strftime(date_format). Not
+    email.utils.parsedate_to_datetime, and not feedparser's own
+    `published_parsed` struct_time: both normalise the timezone, and %Z on a
+    normalised value emits a different string than the consuming templates'
+    strptime expects.
+    """
+    return _date_parser.parse(value).strftime(date_format)
+
+
+def entry_key(entry: Any, date_format: str) -> str:
+    """The stable identity of ONE entry, best available first.
+
+    `id` is feedparser's mapping of RSS <guid> / Atom <id> -- the feed's own
+    permalink for that item. CDC publishes it with isPermaLink="true" and it
+    carries a stable content id, so it survives the item moving down the feed.
+    `link` is the fallback for a feed that omits a guid.
+
+    The formatted date is the LAST RESORT rather than an empty string: it is
+    what the consuming template keyed on by itself before this existed, so a
+    feed with neither id nor link stays ackable rather than silently losing
+    the capability. Empty only when there is nothing at all to key on -- and
+    an empty key must never match anything downstream.
+    """
+    if not hasattr(entry, "get"):
+        return ""
+    for attr in ("id", "link"):
+        value = entry.get(attr)
+        if value:
+            return str(value)
+    raw = entry.get("published")
+    if raw:
+        try:
+            return format_date(raw, date_format)
+        except Exception:  # noqa: BLE001
+            return ""
+    return ""
+
+
+def latest_entry_key(raw_entries: list, date_format: str) -> str:
+    """Identity of the NEWEST entry by published date, or "" if none has one.
+
+    WHY IT IS COMPUTED HERE. The consumer used to do this in Jinja with
+    strptime, and strptime returns a NAIVE datetime -- piping that through
+    as_timestamp assumes the HA host's local zone, a fixed several-hour skew
+    the consuming package documented and accepted. Here the date goes through
+    the same dateutil parser format_date already uses, so the zone in the feed
+    is honoured, and a naive value is read as UTC rather than as host-local
+    because these are RFC-822 feeds.
+
+    STRICTLY GREATER, so on equal timestamps the FIRST in feed order wins.
+    That reproduces the consuming template's tie-break exactly; a card keying
+    on this and a template rendering a headline must never name different
+    items. Feed order is preserved by project_feed, so "first" is stable.
+
+    An unparseable or absent date SKIPS the entry rather than sorting it to
+    one end -- the same treatment project_entry gives, and it is counted there
+    as unparsed_dates.
+    """
+    newest = None
+    key = ""
+    for entry in raw_entries:
+        if not hasattr(entry, "get"):
+            continue
+        raw = entry.get("published")
+        if not raw:
+            continue
+        try:
+            when = _date_parser.parse(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        if newest is None or when > newest:
+            newest = when
+            key = entry_key(entry, date_format)
+    return key
+
+
+def project_entry(
+    entry: Any, date_format: str, inclusions: list[str]
+) -> tuple[dict, bool]:
+    """Project one feedparser entry to the stored dict shape.
+
+    Returns (entry_dict, date_ok). A date that will not parse drops ONLY the
+    date key and reports date_ok False -- the entry is kept and counted. The
+    old component raised here, which took the whole update down and left the
+    entity on its previous value with nothing saying why.
+    """
+    out: dict = {}
+    date_ok = True
+    for key, value in entry.items():
+        if inclusions and key not in inclusions:
+            continue
+        if SKIP_SUBSTRING in key:
+            continue
+        if key in DATE_KEYS:
+            try:
+                value = format_date(value, date_format)
+            except Exception:
+                date_ok = False
+                continue
+        out[key] = value
+    return out, date_ok
+
+
+def project_feed(
+    raw: bytes | str, date_format: str, inclusions: list[str]
+) -> dict:
+    """Parse an already-fetched body and project its entries.
+
+    FEED ORDER IS PRESERVED -- do not sort here.
+
+    CORRECTED 2026-08-08: the original justification for this was that
+    `sensor.cdc_top_outbreak` read `entries[0]` as the top notice. THAT
+    JUSTIFICATION IS VOID -- both that sensor and its CDC Travel Notices
+    source were deleted the same day as a two-link dead chain. Neither
+    surviving consumer is order-dependent: both iterate the whole list and
+    select by parsed date. Order is preserved anyway, because reproducing the
+    source document's order is the correct default and a future consumer may
+    depend on it -- but it is no longer load-bearing, and this comment says so
+    rather than leaving a stale reason to be trusted.
+
+    Returns a dict carrying `entries`, `bozo`, `unparsed_dates` and `parsable`.
+    It does NOT decide the disposition -- the caller owns that, because only
+    the caller knows the HTTP status, and a 200 with an empty feed is a
+    different fact from a 404 with an empty body (Playbook 16.15).
+    """
+    parsed = feedparser.parse(raw)
+    raw_entries = list(getattr(parsed, "entries", []) or [])
+
+    entries: list[dict] = []
+    unparsed_dates = 0
+    for entry in raw_entries:
+        projected, date_ok = project_entry(entry, date_format, inclusions)
+        if not date_ok:
+            unparsed_dates += 1
+        entries.append(projected)
+
+    bozo = 1 if getattr(parsed, "bozo", 0) else 0
+    version = getattr(parsed, "version", "") or ""
+
+    # `parsable` means "this body was recognisably a feed". An empty entry
+    # list with a real feed version is a QUIET FEED and is legitimate; an
+    # empty entry list with no version and bozo set is a body that is not a
+    # feed at all. Collapsing those two is the silent-zero defect.
+    parsable = bool(version) or bool(entries)
+
+    return {
+        "entries": entries,
+        "entry_count": len(entries),
+        # Computed from the RAW entries, before the inclusions allowlist runs.
+        # That is deliberate: `id` is not in any feed's inclusions and does not
+        # need to be, so this adds a capability without widening what every
+        # consumer sees. Widening inclusions was the alternative and is strictly
+        # more surface for the same result.
+        "latest_key": latest_entry_key(raw_entries, date_format),
+        "bozo": bozo,
+        "unparsed_dates": unparsed_dates,
+        "version": version,
+        "parsable": parsable,
+    }
