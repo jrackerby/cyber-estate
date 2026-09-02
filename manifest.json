@@ -1,14 +1,19 @@
 {
   "domain": "cyber_estate",
   "name": "Cyber Estate",
-  "codeowners": ["@jrackerby"],
+  "codeowners": [
+    "@jrackerby"
+  ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/jrackerby/HA",
-  "issue_tracker": "https://jrackerby.atlassian.net/browse/KAN-344",
+  "documentation": "https://github.com/jrackerby/cyber-estate",
   "integration_type": "service",
   "iot_class": "local_polling",
-  "requirements": ["feedparser==6.0.11", "python-dateutil>=2.8.2"],
+  "issue_tracker": "https://github.com/jrackerby/HA/issues",
+  "requirements": [
+    "feedparser==6.0.11",
+    "python-dateutil>=2.8.2"
+  ],
   "single_config_entry": true,
   "version": "1.0.0"
 }

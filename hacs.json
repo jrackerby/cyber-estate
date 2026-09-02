@@ -1,6 +1,6 @@
 {
   "name": "Cyber Estate",
-  "content_in_root": false,
+  "content_in_root": true,
   "render_readme": true,
   "homeassistant": "2026.8.0"
 }
