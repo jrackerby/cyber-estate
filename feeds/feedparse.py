@@ -17,6 +17,31 @@ from typing import Any
 import feedparser
 from dateutil import parser as _date_parser
 
+# ZONE ABBREVIATIONS, RESOLVED EXPLICITLY. dateutil resolves a bare abbreviation
+# ONLY when it matches the running process's own local zone -- it compares
+# against time.tzname -- and returns a NAIVE datetime plus an
+# UnknownTimezoneWarning for anything else. latest_entry_key defaults a naive
+# value to UTC, deliberately, for feeds that publish no zone at all. Those two
+# behaviours combine into a silent bug: a feed publishing "15:00:00 EDT" on a
+# host that is not in an EDT zone decodes naive and is then read as 15:00 UTC,
+# four hours off, and ordering picks the wrong entry with no error anywhere.
+# Measured on a UTC runner, where it made the suite's own zone assertion report
+# the zone-blind answer (jrackerby/HA#472).
+#
+# Resolving them here makes the parse independent of what host it runs on, which
+# is the point -- the estate's host is America/New_York today and CI is not.
+# dateutil also warns that the naive-fallback path will RAISE in a future
+# release, so this stops being merely wrong and starts being fatal.
+_TZINFOS = {
+    "UT": 0, "UTC": 0, "GMT": 0, "Z": 0,
+    "EST": -5 * 3600, "EDT": -4 * 3600,
+    "CST": -6 * 3600, "CDT": -5 * 3600,
+    "MST": -7 * 3600, "MDT": -6 * 3600,
+    "PST": -8 * 3600, "PDT": -7 * 3600,
+    "AKST": -9 * 3600, "AKDT": -8 * 3600,
+    "HST": -10 * 3600,
+}
+
 # Keys carrying a date that the old component reformatted before storing.
 DATE_KEYS = ("published", "updated", "created", "expired")
 
@@ -34,6 +59,14 @@ def format_date(value: str, date_format: str) -> str:
     `published_parsed` struct_time: both normalise the timezone, and %Z on a
     normalised value emits a different string than the consuming templates'
     strptime expects.
+
+    DELIBERATELY NOT GIVEN `_TZINFOS`, unlike latest_entry_key's ordering
+    parse. What this returns becomes part of entry_key when a feed has neither
+    guid nor link, and entry_key is a STORED IDENTITY that acks are matched
+    against. Resolving an abbreviation here would change %Z's output for those
+    feeds and silently orphan every existing ack. The ordering bug that
+    _TZINFOS fixes does not exist on this path: a wrong-but-stable string still
+    matches itself. Changing it is an ack migration, not a bug fix.
     """
     return _date_parser.parse(value).strftime(date_format)
 
@@ -96,10 +129,12 @@ def latest_entry_key(raw_entries: list, date_format: str) -> str:
         if not raw:
             continue
         try:
-            when = _date_parser.parse(raw)
+            when = _date_parser.parse(raw, tzinfos=_TZINFOS)
         except Exception:  # noqa: BLE001
             continue
         if when.tzinfo is None:
+            # Genuinely zone-less now, rather than "carried a zone this process
+            # did not recognise" -- which is what made this default a bug.
             when = when.replace(tzinfo=timezone.utc)
         if newest is None or when > newest:
             newest = when
