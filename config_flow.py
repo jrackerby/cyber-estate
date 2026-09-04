@@ -28,6 +28,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .const import DOMAIN
 from .cve.const import CONF_API_KEY, NVD_CVE_URL
@@ -40,11 +45,14 @@ from .scan.api import (
 from .scan.const import (
     CONF_ACKNOWLEDGED_MACS,
     CONF_DATADIR,
+    CONF_DISCOVERY_INTERVAL,
     CONF_EXCLUDE,
     CONF_HOST,
     CONF_MODE,
     CONF_PORT,
+    CONF_SERVICE_INTERVAL,
     CONF_SSH_ENABLED,
+    CONF_SSH_INTERVAL,
     CONF_SSH_KEY,
     CONF_SSH_USERS,
     CONF_STALE_DAYS,
@@ -56,6 +64,12 @@ from .scan.const import (
     DEFAULT_SSH_KEY,
     DEFAULT_SSH_USERS,
     DEFAULT_STALE_DAYS,
+    MAX_DISCOVERY_INTERVAL_MINUTES,
+    MAX_SERVICE_INTERVAL_MINUTES,
+    MAX_SSH_INTERVAL_MINUTES,
+    MIN_DISCOVERY_INTERVAL_MINUTES,
+    MIN_SERVICE_INTERVAL_MINUTES,
+    MIN_SSH_INTERVAL_MINUTES,
     MIN_STALE_DAYS,
     MODE_AGENT,
     MODE_LOCAL,
@@ -63,6 +77,7 @@ from .scan.const import (
 from .scan.join import normalise_mac
 from .scan.options import DEFAULT_DATADIR, InvalidScanRequest, validate_target
 from .scan.scanner import find_nmap
+from .scan.settings import resolve_settings, split_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +110,49 @@ STEP_LOCAL = vol.Schema(
         vol.Optional(CONF_SSH_USERS, default=DEFAULT_SSH_USERS): str,
     }
 )
+
+
+def _validated_scope(user_input: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Split and validate the target/exclude fields. Raises InvalidScanRequest.
+
+    ONE VALIDATOR FOR BOTH FLOWS (GH-508). Setup collects these fields and the
+    options flow edits them afterwards, and a second copy of this parsing is
+    exactly how the two end up disagreeing about what a trailing comma or a
+    bare hostname means -- the initial form would refuse a value the options
+    form accepted, or worse, the reverse. `validate_target` is the same
+    function `build_args` runs against every target immediately before nmap
+    sees it, so a value that passes here cannot be rejected later for being
+    the wrong shape.
+    """
+    targets = split_list(user_input.get(CONF_TARGETS))
+    excludes = split_list(user_input.get(CONF_EXCLUDE))
+    if not targets:
+        raise InvalidScanRequest("no targets given")
+    for value in targets + excludes:
+        validate_target(value)
+    return targets, excludes
+
+
+def _minutes(minimum: int, maximum: int):
+    """A whole number of minutes, bounded, rendered as a number box.
+
+    The bounds are the const.py ones rather than repeated here, so the form
+    and `settings.resolve_settings`'s clamp cannot disagree about what is
+    acceptable -- a form that accepted 2 minutes while the resolver clamped it
+    to 5 would report a schedule it was not keeping.
+    """
+    return vol.All(
+        NumberSelector(
+            NumberSelectorConfig(
+                min=minimum,
+                max=maximum,
+                step=1,
+                mode=NumberSelectorMode.BOX,
+                unit_of_measurement="minutes",
+            )
+        ),
+        vol.Coerce(int),
+    )
 
 
 async def _validate_nvd_key(hass, api_key) -> str | None:
@@ -185,22 +243,11 @@ class CyberEstateConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            targets = [
-                t.strip() for t in user_input[CONF_TARGETS].split(",") if t.strip()
-            ]
-            excludes = [
-                t.strip()
-                for t in (user_input.get(CONF_EXCLUDE) or "").split(",")
-                if t.strip()
-            ]
             # VALIDATED HERE, not at first scan. A target that nmap will
             # refuse should be refused while the person who typed it is
             # still looking at the field.
             try:
-                if not targets:
-                    raise InvalidScanRequest("no targets given")
-                for value in targets + excludes:
-                    validate_target(value)
+                _validated_scope(user_input)
             except InvalidScanRequest as err:
                 _LOGGER.debug("rejected target: %s", err)
                 errors[CONF_TARGETS] = "invalid_target"
@@ -297,29 +344,196 @@ class CyberEstateConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class CyberEstateOptionsFlow(OptionsFlow):
-    """KAN-294: acknowledge a MAC `unknown_hosts` cannot otherwise clear.
+    """Everything about a running entry that is safe to change in place.
 
-    A single field in `entry.options`, deliberately not touching `entry.data`
-    at all -- the scan-mode config (local vs. agent) is a different concern
-    with its own reconfigure path, and an options flow that rewrote both
-    would risk exactly the "resubmit everything or lose a field" trap a
-    wholesale-data options flow creates elsewhere in this estate. Read live
-    by the coordinator every refresh (`_acknowledged_macs()`), so acking a
-    host takes effect on the next tick, no reload required.
+    NARROW AND ADDITIVE, ONE CONCERN PER STEP. It began as KAN-294's single
+    acknowledged-MACs field, deliberately not touching `entry.data`, and it
+    keeps that shape: each step writes the handful of keys it owns and merges
+    them over whatever is already stored. A wholesale-data options flow -- one
+    form carrying every setting -- creates the "resubmit everything or lose a
+    field" trap this estate has paid for elsewhere, and it would put the NVD
+    key and the agent token on a form nobody opened to change them.
+
+    THE MERGE IS LOAD BEARING. `async_create_entry(data=...)` REPLACES the
+    options mapping wholesale, so a step that returns only its own keys
+    silently deletes every other step's. Harmless while there was exactly one
+    step and latent from KAN-294 onwards; the moment GH-508 added a second,
+    saving a subnet list would have cleared the acknowledged MACs and put
+    `unknown_hosts` back up by however many had been acknowledged -- a number
+    moving on its own, with no edit to point at.
+
+    NOTHING HERE RELOADS THE ENTRY. The coordinator re-reads scope and
+    schedule off the entry on every tick (coordinator.settings) and the
+    acknowledged MACs on every refresh, so a saved change is live on the next
+    tick without restarting three subsystems -- and, critically, without
+    touching the inventory store, which holds `first_seen` for the whole
+    estate and is the reason "delete the entry and set it up again" was never
+    an acceptable way to add a subnet.
+
+    SCOPE AND SCHEDULE ARE LOCAL MODE ONLY, and are not offered in agent mode
+    rather than offered and ignored. In agent mode the targets live in the
+    scanner host's own `scan.sh` and the schedule in its
+    `nmap-scan@<profile>.timer` units; the agent's v1 API serves
+    /inventory, /status, /health, /scan and /schedule, and /schedule takes
+    {profile, enabled} only. There is no endpoint an interval could be sent
+    to, so a form here would be a control that looks live and does nothing --
+    the exact failure the pinned profile list and the option vocabulary are
+    both written to prevent. jrackerby/HA#508 carries that half.
     """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        """Pick a concern -- or, in agent mode, go straight to the one that
+        applies, rather than showing a menu with a single item on it."""
+        if self.config_entry.data.get(CONF_MODE) != MODE_LOCAL:
+            return await self.async_step_acknowledged_macs()
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["scan_scope", "schedule", "acknowledged_macs"],
+        )
+
+    def _save(self, updates: dict[str, Any]) -> ConfigFlowResult:
+        """Write one step's keys over the stored options, keeping the rest."""
+        return self.async_create_entry(
+            data={**self.config_entry.options, **updates}
+        )
+
+    # -- what gets scanned ---------------------------------------------------
+
+    async def async_step_scan_scope(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Edit the networks to scan and the addresses to leave alone.
+
+        STORED AS A LIST, NOT THE RAW STRING. The text field is a convenience
+        for typing; what the coordinator scans is the parsed, validated list,
+        and keeping the unparsed string would leave a second representation of
+        the same setting for someone to read later and split differently.
+        """
+        errors: dict[str, str] = {}
+        settings = resolve_settings(
+            self.config_entry.data, self.config_entry.options
+        )
+
+        if user_input is not None:
+            try:
+                targets, excludes = _validated_scope(user_input)
+            except InvalidScanRequest as err:
+                _LOGGER.debug("rejected target: %s", err)
+                # ON THE FIELD, not on the form. `base` would put "that is not
+                # an address" under the dialog title with both fields looking
+                # equally innocent.
+                errors[CONF_TARGETS] = "invalid_target"
+            else:
+                return self._save(
+                    {CONF_TARGETS: targets, CONF_EXCLUDE: excludes}
+                )
+
+        # Redisplayed from what was TYPED when there is an error, so a typo is
+        # corrected in place rather than reverting to the stored value and
+        # making the operator retype the whole line.
+        current_targets = (
+            user_input.get(CONF_TARGETS)
+            if user_input is not None
+            else ", ".join(settings.targets)
+        )
+        current_exclude = (
+            user_input.get(CONF_EXCLUDE)
+            if user_input is not None
+            else ", ".join(settings.exclude)
+        )
+        return self.async_show_form(
+            step_id="scan_scope",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_TARGETS, default=current_targets): str,
+                    vol.Optional(CONF_EXCLUDE, default=current_exclude): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    # -- how often it gets scanned -------------------------------------------
+
+    async def async_step_schedule(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Edit the local sweep clocks.
+
+        TWO SWEEPS AND A PROBE, WHICH IS WHAT LOCAL MODE ACTUALLY HAS. The
+        `PROFILES` tuple names three -- discovery, standard, deep -- because it
+        mirrors the AGENT's allowlist, and the agent has three timer units. The
+        local coordinator schedules two: `_run_discovery` and
+        `_run_service_scan`. `deep` exists locally as an on-demand button only,
+        with no clock to configure, so offering a deep interval here would be a
+        field with nothing behind it. The SSH probe is the third clock and is
+        listed because it authenticates against real hosts on a timer, which is
+        a frequency someone will want to change for a reason the scan sweeps do
+        not share.
+
+        The bounds are enforced by the selector on submit AND by the resolver
+        on read; neither is redundant, because only one of them sees a value
+        that arrived from a hand-edited .storage file.
+        """
+        settings = resolve_settings(
+            self.config_entry.data, self.config_entry.options
+        )
+
+        if user_input is not None:
+            return self._save(
+                {
+                    CONF_DISCOVERY_INTERVAL: user_input[CONF_DISCOVERY_INTERVAL],
+                    CONF_SERVICE_INTERVAL: user_input[CONF_SERVICE_INTERVAL],
+                    CONF_SSH_INTERVAL: user_input[CONF_SSH_INTERVAL],
+                }
+            )
+
+        return self.async_show_form(
+            step_id="schedule",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DISCOVERY_INTERVAL,
+                        default=int(
+                            settings.discovery_interval.total_seconds() // 60
+                        ),
+                    ): _minutes(
+                        MIN_DISCOVERY_INTERVAL_MINUTES,
+                        MAX_DISCOVERY_INTERVAL_MINUTES,
+                    ),
+                    vol.Required(
+                        CONF_SERVICE_INTERVAL,
+                        default=int(settings.service_interval.total_seconds() // 60),
+                    ): _minutes(
+                        MIN_SERVICE_INTERVAL_MINUTES,
+                        MAX_SERVICE_INTERVAL_MINUTES,
+                    ),
+                    vol.Required(
+                        CONF_SSH_INTERVAL,
+                        default=int(settings.ssh_interval.total_seconds() // 60),
+                    ): _minutes(
+                        MIN_SSH_INTERVAL_MINUTES, MAX_SSH_INTERVAL_MINUTES
+                    ),
+                }
+            ),
+        )
+
+    # -- KAN-294: acknowledge a MAC `unknown_hosts` cannot otherwise clear ----
+
+    async def async_step_acknowledged_macs(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """A MAC Joel has looked at and decided is accounted for.
+
+        Read live by the coordinator every refresh (`_acknowledged_macs()`),
+        so acking a host takes effect on the next tick, no reload required.
+        """
         errors: dict[str, str] = {}
         current = self.config_entry.options.get(CONF_ACKNOWLEDGED_MACS, [])
 
         if user_input is not None:
-            raw = [
-                t.strip()
-                for t in user_input.get(CONF_ACKNOWLEDGED_MACS, "").split(",")
-                if t.strip()
-            ]
+            raw = split_list(user_input.get(CONF_ACKNOWLEDGED_MACS, ""))
             normalised: list[str] = []
             bad: list[str] = []
             for value in raw:
@@ -331,12 +545,10 @@ class CyberEstateOptionsFlow(OptionsFlow):
             if bad:
                 errors[CONF_ACKNOWLEDGED_MACS] = "invalid_mac"
             else:
-                return self.async_create_entry(
-                    data={CONF_ACKNOWLEDGED_MACS: normalised}
-                )
+                return self._save({CONF_ACKNOWLEDGED_MACS: normalised})
 
         return self.async_show_form(
-            step_id="init",
+            step_id="acknowledged_macs",
             data_schema=vol.Schema(
                 {
                     vol.Optional(

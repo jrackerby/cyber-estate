@@ -70,6 +70,41 @@
   "options": {
     "step": {
       "init": {
+        "title": "Cyber Estate options",
+        "description": "Each of these edits a different thing and saves on its own. Nothing here restarts the integration or touches the scan history — a change is live on the scanner's next tick, within a few minutes.",
+        "menu_options": {
+          "scan_scope": "Networks to scan",
+          "schedule": "How often to scan",
+          "acknowledged_macs": "Acknowledge unaccounted-for hosts"
+        }
+      },
+      "scan_scope": {
+        "title": "Networks to scan",
+        "description": "Change what Home Assistant sweeps, without rebuilding the integration. Adding a range does not forget anything already found: every device keeps the date it was first seen. A newly added range is swept for liveness straight away; its ports are read on the next scheduled service scan, or now with the Scan now button.",
+        "data": {
+          "targets": "Networks to scan",
+          "exclude": "Addresses to leave alone"
+        },
+        "data_description": {
+          "targets": "One or more addresses or ranges, separated by commas. For example 192.0.2.0/24, 198.51.100.0/24",
+          "exclude": "Optional. Addresses that must never be scanned, separated by commas. Clearing this field removes every exclusion."
+        }
+      },
+      "schedule": {
+        "title": "How often to scan",
+        "description": "Two sweeps run on two separate clocks, on purpose. The discovery sweep is cheap and answers what is on the network; the service scan is expensive and answers what each device is running. Running the cheap one often and the expensive one rarely is the point — do not set them to the same figure.\n\nScanning is checked every five minutes, so an interval takes effect on the next check and is rounded up to it.",
+        "data": {
+          "discovery_interval_minutes": "Discovery sweep",
+          "service_interval_minutes": "Service and version scan",
+          "ssh_probe_interval_minutes": "SSH reachability probe"
+        },
+        "data_description": {
+          "discovery_interval_minutes": "How often to check which devices are on the network. Cheap; hourly by default.",
+          "service_interval_minutes": "How often to scan ports and identify services. Slow — a full sweep can run for many minutes — and daily by default.",
+          "ssh_probe_interval_minutes": "How often to try the SSH key against each host offering SSH. This authenticates against real machines, so a short interval fills their authentication logs. Every six hours by default."
+        }
+      },
+      "acknowledged_macs": {
         "title": "Acknowledge unaccounted-for hosts",
         "description": "Unknown hosts can never reach zero if one is legitimate but has no way to be marked as fine -- a multi-NIC device (a router, a hypervisor, a NAS with LAG) commonly answers ARP on an interface Home Assistant's device registry does not hold, and nothing here can tell that apart from an intruder without you saying so. List the MACs you have looked at and decided are accounted for; they still show up on the Unknown hosts entity's attributes, in their own list, so acknowledging one is never mistaken for it having disappeared.",
         "data": {
@@ -81,7 +116,8 @@
       }
     },
     "error": {
-      "invalid_mac": "One or more of those is not a MAC address. Nothing was saved."
+      "invalid_mac": "One or more of those is not a MAC address. Nothing was saved.",
+      "invalid_target": "That is not an address, range or hostname nmap will accept. Nothing was saved."
     }
   },
   "entity": {

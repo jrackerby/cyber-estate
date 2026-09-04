@@ -51,10 +51,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # KAN-294: a saved acknowledged-MACs change should not sit until the
-    # next scheduled tick before unknown_hosts reflects it -- an explicit
-    # refresh, not a reload. Reloading would re-run agent/local setup
-    # (binary lookup, agent handshake) for a change that touched neither.
+    # A SAVED OPTION IS ACTED ON AT ONCE, AND STILL WITHOUT A RELOAD.
+    # KAN-294 added this for acknowledged MACs; GH-508 put scan scope and the
+    # sweep schedule through the same door. Reloading would re-run agent/local
+    # setup (binary lookup, agent handshake) and, worse, restart the feeds and
+    # CVE coordinators, for a change that touched none of them -- while the
+    # scan coordinator re-reads all of it off the entry itself. The refresh is
+    # what makes the change visible now rather than up to a tick later.
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 

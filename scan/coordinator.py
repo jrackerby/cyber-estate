@@ -46,17 +46,15 @@ from .api import (
 )
 from .const import (
     CONF_ACKNOWLEDGED_MACS,
-    LOCAL_DISCOVERY_INTERVAL,
-    LOCAL_SERVICE_INTERVAL,
     LOCAL_TICK,
     SCAN_NS,
-    SSH_PROBE_INTERVAL,
     UPDATE_INTERVAL,
 )
 from .join import JoinResult, join_hosts, normalise_mac
 from .options import PROFILES as OPTION_PROFILES
 from .scanner import NmapScanner, ScanBusy, ScanError
 from .services_view import census, host_was_port_scanned
+from .settings import ScanSettings, resolve_settings
 from .ssh_probe import SshProber, SshResult, host_runs_ssh, ssh_ports
 from .store import InventoryStore
 
@@ -287,8 +285,7 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         hass: HomeAssistant,
         scanner: NmapScanner,
         store: InventoryStore,
-        targets: list[str],
-        exclude: list[str],
+        settings: ScanSettings,
         stale_days: int,
         prober: SshProber | None = None,
         config_entry_id: str | None = None,
@@ -296,10 +293,15 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         super().__init__(hass, LOCAL_TICK, config_entry_id)
         self.scanner = scanner
         self.store = store
-        self.targets = targets
-        self.exclude = exclude
         self.stale_days = stale_days
         self.prober = prober
+        # THE FALLBACK, NOT THE SOURCE. Scope and schedule are re-read off the
+        # config entry on every use (see `settings`), so an options edit takes
+        # effect on the next tick rather than at the next reload. This copy is
+        # what a coordinator constructed without a reachable entry uses, and it
+        # is what setup resolved, so the two agree at construction by
+        # definition.
+        self._settings = settings
 
         self._last_discovery: datetime | None = None
         self._last_service_scan: datetime | None = None
@@ -312,6 +314,39 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         # coroutines behind one long scan.
         self._running: dict[str, bool] = {}
         self._clocks_seeded = False
+        # The scope the last full sweep actually covered. None until one has
+        # run in this process -- see `_scope_changed`.
+        self._swept_scope: tuple[frozenset[str], frozenset[str]] | None = None
+
+    # -- scope and schedule --------------------------------------------------
+
+    @property
+    def settings(self) -> ScanSettings:
+        """Scope and schedule as they stand RIGHT NOW.
+
+        Read live off the config entry rather than cached at setup, for the
+        same reason `_acknowledged_macs` is: an options edit that only took
+        effect on the next full reload would mean adding a subnet costs a
+        restart of all three subsystems, and the operator has no way to tell
+        whether the change is live yet. Everything that needs scope or
+        schedule comes through here and through `resolve_settings` beneath it,
+        so the form's defaults and the sweep's targets cannot disagree
+        (LAW 1: one accessor).
+        """
+        entry = None
+        if self.config_entry_id:
+            entry = self.hass.config_entries.async_get_entry(self.config_entry_id)
+        if entry is None:
+            return self._settings
+        return resolve_settings(entry.data, entry.options)
+
+    @property
+    def targets(self) -> list[str]:
+        return list(self.settings.targets)
+
+    @property
+    def exclude(self) -> list[str]:
+        return list(self.settings.exclude)
 
     # -- scheduling ----------------------------------------------------------
 
@@ -347,6 +382,44 @@ class LocalCoordinator(NetworkInventoryCoordinator):
             return True
         return dt_util.utcnow() - last >= interval
 
+    @staticmethod
+    def _scope_of(settings: ScanSettings) -> tuple[frozenset[str], frozenset[str]]:
+        """What a sweep covers, as SETS. Reordering the same two subnets in the
+        text field is not a scope change and must not cost a scan."""
+        return frozenset(settings.targets), frozenset(settings.exclude)
+
+    def _scope_changed(self, settings: ScanSettings) -> bool:
+        """True when the live scope is not the one last actually swept.
+
+        A SUBNET ADDED AT 14:00 IS SWEPT AT 14:00, NOT AT 15:00. Waiting for
+        the discovery clock would leave the new range unmeasured for up to a
+        full interval while the entities report a host count that looks
+        settled, and nothing on any surface would say the number excludes the
+        range that was just added -- an operator who adds a management VLAN
+        and sees no new hosts reads that as "nothing is there".
+
+        EXCLUDE COUNTS TOO, because removing an exclusion widens the scope
+        exactly as much as adding a target does. Narrowing it -- adding a
+        target or an exclusion -- costs one cheap sweep it did not strictly
+        need, which is the right way round: the alternative is a widening
+        nobody measures.
+
+        Only DISCOVERY is forced. A service sweep of a fresh /24 runs for many
+        minutes and its clock is measured in days; forcing one on every edit
+        would make correcting a typo in the exclude list an expensive act.
+        The new range gets its ports read on the next scheduled service sweep,
+        or immediately from the Scan now button.
+
+        None means nothing has been swept in this process yet, so the clocks
+        seeded from the store govern alone -- otherwise every restart would
+        force a sweep, which is exactly what `_seed_clocks_from_store` exists
+        to stop.
+        """
+        return (
+            self._swept_scope is not None
+            and self._scope_of(settings) != self._swept_scope
+        )
+
     async def _async_update_data(self) -> InventoryView:
         """One tick. Launches whichever sweeps are due and returns immediately.
 
@@ -365,16 +438,24 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         """
         await self.store.async_load()
         self._seed_clocks_from_store()
+        settings = self.settings
 
         # Service scan is checked first despite being the more expensive sweep --
         # it also runs on the longer interval, so this ordering is what makes it
         # due least often, not a cost ordering. Only one scan is launched per tick.
-        if self._due("standard", self._last_service_scan, LOCAL_SERVICE_INTERVAL):
+        if self._due("standard", self._last_service_scan, settings.service_interval):
             self._launch("service scan", self._run_service_scan())
-        elif self._due("discovery", self._last_discovery, LOCAL_DISCOVERY_INTERVAL):
+        elif self._due(
+            "discovery", self._last_discovery, settings.discovery_interval
+        ) or (
+            self._enabled.get("discovery", True)
+            and self._scope_changed(settings)
+        ):
             self._launch("discovery", self._run_discovery())
 
-        if self.prober and self._due("ssh", self._last_ssh_probe, SSH_PROBE_INTERVAL):
+        if self.prober and self._due(
+            "ssh", self._last_ssh_probe, settings.ssh_interval
+        ):
             self._launch("ssh probe", self._run_ssh_probe())
 
         # A tick that scanned nothing still republishes: the registry may have
@@ -408,10 +489,14 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         self.hass.async_create_task(_wrap())
 
     async def _run_discovery(self) -> None:
+        # Read ONCE and swept with what was read. Re-reading `self.settings`
+        # for the stamp below could record a scope the sweep never covered, if
+        # the options changed while nmap was running.
+        settings = self.settings
         try:
             result = await self.scanner.async_scan(
-                self.targets,
-                exclude=self.exclude,
+                list(settings.targets),
+                exclude=list(settings.exclude),
                 discovery_only=True,
                 label="discovery",
             )
@@ -423,17 +508,19 @@ class LocalCoordinator(NetworkInventoryCoordinator):
             _LOGGER.warning("discovery sweep failed: %s", err)
             return
         self._last_discovery = dt_util.utcnow()
+        self._swept_scope = self._scope_of(settings)
         self.store.apply_scan(
             result.hosts, complete=result.complete, stale_days=self.stale_days
         )
 
     async def _run_service_scan(self) -> None:
         keys = list(OPTION_PROFILES["standard"])
+        settings = self.settings
         try:
             result = await self.scanner.async_scan(
-                self.targets,
+                list(settings.targets),
                 option_keys=keys,
-                exclude=self.exclude,
+                exclude=list(settings.exclude),
                 label="service scan",
             )
         except ScanBusy:
@@ -455,6 +542,7 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         # A liveness sweep is implied by a service scan, so the discovery clock
         # resets too -- otherwise the next tick immediately runs a redundant one.
         self._last_discovery = self._last_service_scan
+        self._swept_scope = self._scope_of(settings)
         self.store.apply_scan(
             result.hosts, complete=result.complete, stale_days=self.stale_days
         )
@@ -535,11 +623,17 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         dispatched separately rather than being given a fake option set.
         """
         if profile == "discovery":
+            # STAMPS THE SCOPE, not just the clock. This sweep covers the whole
+            # live target set, so leaving `_swept_scope` behind would make the
+            # next tick see an unswept scope and launch an identical sweep --
+            # pressing Scan now right after adding a subnet would scan twice.
+            settings = self.settings
             await self.scanner.async_scan(
-                self.targets, exclude=self.exclude,
+                list(settings.targets), exclude=list(settings.exclude),
                 discovery_only=True, label="discovery",
             )
             self._last_discovery = dt_util.utcnow()
+            self._swept_scope = self._scope_of(settings)
             await self.store.async_load()
             self.async_set_updated_data(self._build_view())
             return
@@ -581,13 +675,19 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         and buttons do not need to know which mode they are running in."""
         discovery_on = self._enabled.get("discovery", True)
         standard_on = self._enabled.get("standard", True)
+        # THE LIVE INTERVALS, not the defaults. `next_run` is the only place a
+        # schedule change becomes visible on a surface, so reading a constant
+        # here would leave the switch printing the old cadence indefinitely
+        # after an options edit -- a control that had accepted the change and
+        # then denied it.
+        settings = self.settings
         return {
             "discovery": {
                 "timer_enabled": discovery_on,
                 # NEXT RUN IS NULL WHEN SUPPRESSED, never a stale date. A time
                 # printed beside a disabled schedule reads as one that is still
                 # coming.
-                "next_run": _iso(self._last_discovery, LOCAL_DISCOVERY_INTERVAL)
+                "next_run": _iso(self._last_discovery, settings.discovery_interval)
                 if discovery_on
                 else None,
                 "last_run": _iso(self._last_discovery, None),
@@ -596,7 +696,7 @@ class LocalCoordinator(NetworkInventoryCoordinator):
             },
             "standard": {
                 "timer_enabled": standard_on,
-                "next_run": _iso(self._last_service_scan, LOCAL_SERVICE_INTERVAL)
+                "next_run": _iso(self._last_service_scan, settings.service_interval)
                 if standard_on
                 else None,
                 "last_run": _iso(self._last_service_scan, None),

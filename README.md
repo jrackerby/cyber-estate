@@ -34,6 +34,18 @@ optionally an exclude list, a data directory, stale-host thresholds, SSH
 credentials for authenticated collection, TLS/verification flags, and a list of
 already-acknowledged MACs.
 
+**Options** (*Configure* on the entry) edit what is safe to change while it
+runs, one concern per step: the networks to scan and the addresses to leave
+alone, how often each local sweep runs, and the acknowledged MACs. Each step
+saves on its own, takes effect on the scanner's next tick, and neither reloads
+the integration nor touches the scan history — so a subnet can be added without
+losing the date every device was first seen.
+
+Scan scope and the sweep clocks apply to LOCAL mode only. With a separate
+scanner agent, the targets live in that host's own `scan.sh` and the schedule in
+its `nmap-scan@<profile>.timer` units; the agent's v1 API exposes no interval,
+so those steps are not offered rather than offered and ignored.
+
 Requires `feedparser` and `python-dateutil`, declared in the manifest and
 installed by Home Assistant.
 

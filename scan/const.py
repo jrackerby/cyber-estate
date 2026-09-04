@@ -35,11 +35,21 @@ CONF_MODE = "mode"
 MODE_AGENT = "agent"
 MODE_LOCAL = "local"
 
-# Local-mode scanning.
+# Local-mode scanning. TARGETS AND EXCLUDE ARE ALSO OPTIONS KEYS (GH-508):
+# collected in entry.data at setup, editable afterwards in entry.options, and
+# read through settings.resolve_settings by everything that needs them.
 CONF_TARGETS = "targets"
 CONF_EXCLUDE = "exclude"
 CONF_DATADIR = "datadir"
 CONF_STALE_DAYS = "stale_days"
+
+# GH-508: the local sweep clocks, as entry.options keys. The unit is IN THE
+# KEY because these are stored as bare integers -- a key named `discovery_
+# interval` holding 60 cannot be told apart from one holding 60 seconds by
+# anything reading the entry later, and the two differ by a factor of sixty.
+CONF_DISCOVERY_INTERVAL = "discovery_interval_minutes"
+CONF_SERVICE_INTERVAL = "service_interval_minutes"
+CONF_SSH_INTERVAL = "ssh_probe_interval_minutes"
 
 # Local-mode SSH reachability probe.
 CONF_SSH_ENABLED = "ssh_probe_enabled"
@@ -87,8 +97,31 @@ REQUEST_TIMEOUT = 30
 # one rarely is correct -- what is NOT correct is letting the cheap one's
 # freshness stand in for the expensive one's, which is why they are timed,
 # stamped and reported separately all the way up to the sensors.
-LOCAL_DISCOVERY_INTERVAL = timedelta(hours=1)
-LOCAL_SERVICE_INTERVAL = timedelta(hours=24)
+#
+# THESE ARE DEFAULTS, NOT THE VALUES (GH-508). They were module constants, so
+# the one thing an operator most often wants to change about a scanner -- how
+# often it scans -- was a code edit and a restart, against this file's own
+# header. The live values come from settings.resolve_settings; nothing outside
+# it reads these three.
+DEFAULT_DISCOVERY_INTERVAL_MINUTES = 60
+DEFAULT_SERVICE_INTERVAL_MINUTES = 24 * 60
+
+# BOUNDS, ENFORCED TWICE: the form refuses out-of-range input on submit, and
+# the resolver clamps whatever it is handed, because a stored value can also
+# arrive from a hand-edited .storage file or from bounds that moved between
+# versions.
+#
+# The discovery floor is LOCAL_TICK, below. A sweep cannot be due more often
+# than the clock that asks whether it is due, and offering a two-minute
+# interval that behaves as five is a setting that lies about itself.
+#
+# The service ceiling is a fortnight: past that the port data is older than
+# DEFAULT_STALE_DAYS makes a host's whole record, so the sweep would be
+# scheduled less often than the estate forgets what it found.
+MIN_DISCOVERY_INTERVAL_MINUTES = 5
+MAX_DISCOVERY_INTERVAL_MINUTES = 24 * 60
+MIN_SERVICE_INTERVAL_MINUTES = 60
+MAX_SERVICE_INTERVAL_MINUTES = 14 * 24 * 60
 
 # The coordinator's own tick in local mode. It does NOT scan on every tick; it
 # checks whether either sweep is due. Short enough that an on-demand scan's
@@ -97,8 +130,12 @@ LOCAL_TICK = timedelta(minutes=5)
 
 # The SSH probe runs against every host seen offering ssh. Kept well apart from
 # the scan clocks: it is cheap, but it authenticates against real hosts, and
-# doing that every five minutes would fill authentication logs estate-wide.
-SSH_PROBE_INTERVAL = timedelta(hours=6)
+# doing that every five minutes would fill authentication logs estate-wide --
+# which is also why its floor is an hour rather than LOCAL_TICK. Configurable
+# on the same terms as the sweeps above (GH-508).
+DEFAULT_SSH_INTERVAL_MINUTES = 6 * 60
+MIN_SSH_INTERVAL_MINUTES = 60
+MAX_SSH_INTERVAL_MINUTES = 7 * 24 * 60
 
 # Scan profiles the agent will accept. Mirrored from the agent's own allowlist
 # rather than discovered, because a button for a profile the agent rejects is a

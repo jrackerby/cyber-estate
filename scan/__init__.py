@@ -24,7 +24,6 @@ from ..const import DOMAIN  # real top-level domain -- see scan/const.py's note
 from .api import NetworkInventoryClient
 from .const import (
     CONF_DATADIR,
-    CONF_EXCLUDE,
     CONF_HOST,
     CONF_MODE,
     CONF_PORT,
@@ -32,7 +31,6 @@ from .const import (
     CONF_SSH_KEY,
     CONF_SSH_USERS,
     CONF_STALE_DAYS,
-    CONF_TARGETS,
     CONF_TOKEN,
     CONF_USE_TLS,
     CONF_VERIFY_SSL,
@@ -42,25 +40,11 @@ from .const import (
 from .coordinator import AgentCoordinator, LocalCoordinator, NetworkInventoryCoordinator
 from .scan_service import async_register_services, async_unregister_services
 from .scanner import find_nmap
+from .settings import resolve_settings, split_list
 from .ssh_probe import SshProber, find_ssh
 from .store import InventoryStore
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _split(value: str | list | None) -> list[str]:
-    """Accept either a list or a comma-separated string.
-
-    The config flow collects these as one text field because a repeating field
-    is a poor fit for 'the two subnets I scan', but options set through YAML or
-    a future import may arrive as a real list. Handling both here means no
-    caller has to know which it has.
-    """
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(v).strip() for v in value if str(v).strip()]
-    return [part.strip() for part in str(value).split(",") if part.strip()]
 
 
 def _dir_exists(path: str) -> bool:
@@ -145,7 +129,7 @@ async def _async_setup_local(
     if entry.data.get(CONF_SSH_ENABLED):
         ssh_binary = await hass.async_add_executor_job(find_ssh)
         key = entry.data.get(CONF_SSH_KEY)
-        users = _split(entry.data.get(CONF_SSH_USERS))
+        users = split_list(entry.data.get(CONF_SSH_USERS))
         if ssh_binary and key and users:
             prober = SshProber(hass, ssh_binary, key, users)
         else:
@@ -159,8 +143,11 @@ async def _async_setup_local(
         hass,
         scanner=scanner,
         store=store,
-        targets=_split(entry.data.get(CONF_TARGETS)),
-        exclude=_split(entry.data.get(CONF_EXCLUDE)),
+        # RESOLVED HERE ONLY AS THE FALLBACK. The coordinator re-reads the
+        # entry on every use (GH-508) so an options edit reaches the next
+        # sweep without a reload; this is what it falls back to if the entry
+        # cannot be read.
+        settings=resolve_settings(entry.data, entry.options),
         stale_days=int(entry.data.get(CONF_STALE_DAYS, DEFAULT_STALE_DAYS)),
         prober=prober,
         config_entry_id=entry.entry_id,
