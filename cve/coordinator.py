@@ -150,7 +150,12 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
         reg = dr.async_get(self.hass)
         assets, accepted, unmapped = [], [], []
 
-        for device in reg.devices.values():
+        # ITERATED, NOT .values() (GH-569). Deprecated mapping access on
+        # device_registry.devices; breaks in HA 2027.9. Iterating yields
+        # DeviceEntry directly. This site is NOT the one the ticket
+        # named -- the log reported only scan/coordinator.py, and a fix
+        # scoped to that one frame would have left this one live.
+        for device in reg.devices:
             sw = device.sw_version
             if not sw:
                 continue

@@ -11,6 +11,7 @@ to bound itself, and the old component was not.
 
 from __future__ import annotations
 
+import io
 from datetime import timezone
 from typing import Any
 
@@ -191,7 +192,24 @@ def project_feed(
     the caller knows the HTTP status, and a 200 with an empty feed is a
     different fact from a 404 with an empty body (Playbook 16.15).
     """
-    parsed = feedparser.parse(raw)
+    # WRAPPED, NOT PASSED RAW, AND THIS IS A BLOCKING-CALL FIX (GH-569).
+    # feedparser.parse() decides what it was handed by trying things in order,
+    # and `open()` on the argument comes before "treat it as content". Handed
+    # bytes, it therefore calls open() on the ENTIRE FEED DOCUMENT as though
+    # it were a path -- a filesystem call, inside the event loop, on every
+    # feed of every poll. HA's loop-blocking detector caught it in
+    # system_log; nothing else would have, because the call fails harmlessly
+    # and the parse then succeeds anyway.
+    #
+    # A file-like object skips that branch entirely: measured with builtins
+    # .open patched, the bytes form makes one open() call and the BytesIO form
+    # makes none, for identical parsed entries.
+    #
+    # This does NOT touch LAW 3's ruling. feedparser stays exactly what that
+    # ruling made it -- an offline parser over bytes cyber_estate fetched
+    # itself -- and no network path is added or restored here. Only the shape
+    # of the argument changes.
+    parsed = feedparser.parse(io.BytesIO(raw))
     raw_entries = list(getattr(parsed, "entries", []) or [])
 
     entries: list[dict] = []

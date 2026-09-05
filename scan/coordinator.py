@@ -188,7 +188,11 @@ class NetworkInventoryCoordinator(DataUpdateCoordinator[InventoryView]):
         ours = self.config_entry_id
         return [
             conn_value
-            for device in registry.devices.values()
+            # ITERATED, NOT .values() (GH-569). `device_registry.devices`
+            # as a MAPPING is deprecated and stops working in HA 2027.9;
+            # iterating the container yields DeviceEntry directly, which is
+            # the supported form. Same objects, same order, no lookup.
+            for device in registry.devices
             if not (ours and device.config_entries == {ours})
             for conn_type, conn_value in device.connections
             if conn_type == dr.CONNECTION_NETWORK_MAC
