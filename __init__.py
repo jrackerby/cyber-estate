@@ -23,6 +23,7 @@ from .const import DOMAIN, PLATFORMS
 from .cve.coordinator import NvdEstateCoordinator
 from .feeds.coordinator import EstateFeedsCoordinator
 from .scan import (
+    async_register_scanner_device,
     async_remove_scan_device,
     async_remove_scan_entry,
     async_setup_scan,
@@ -43,6 +44,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await cve_coordinator.async_config_entry_first_refresh()
 
     scan_coordinator = await async_setup_scan(hass, entry)
+    # BEFORE the platforms below, not after: endpoint devices carry a
+    # via_device_id pointing at the scanner, and that id has to name a row the
+    # registry already holds or the endpoint entity raises instead of simply
+    # going unparented. See async_register_scanner_device.
+    async_register_scanner_device(hass, entry)
 
     entry.runtime_data = {
         "feeds": feeds_coordinator,

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -37,6 +38,29 @@ from .coordinator import NetworkInventoryCoordinator
 def pretty_mac(mac: str) -> str:
     """12 hex chars -> aa:bb:cc:dd:ee:ff, the form the registry stores."""
     return ":".join(mac[i:i + 2] for i in range(0, 12, 2))
+
+
+def scanner_device_info(entry_id: str, title: str, host: str | None) -> DeviceInfo:
+    """The scanner's own device, described in ONE place.
+
+    Read by two code paths -- `ScannerEntity`, which is what actually puts
+    scan buttons and the schedule switch on the device page, and
+    `async_register_scanner_device`, which registers the same device up front
+    so an endpoint has something to point `via_device_id` at before any
+    platform is forwarded. Two literals here would drift and the drift would
+    show up as a duplicate device, so both callers take this.
+    """
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry_id)},
+        name=title,
+        manufacturer="nmap",
+        model="Scanner agent" if host else "Local scanner",
+        # `host` IS ABSENT IN LOCAL MODE, and that is not a missing value to
+        # be defaulted -- there is no remote agent to link to, because the
+        # scanner is this instance. A configuration_url of "http://None"
+        # would render as a live link to nowhere on the device page.
+        configuration_url=f"http://{host}" if host else None,
+    )
 
 
 class ScannerEntity(CoordinatorEntity[NetworkInventoryCoordinator]):
@@ -55,17 +79,7 @@ class ScannerEntity(CoordinatorEntity[NetworkInventoryCoordinator]):
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{entry_id}_{description.key}"
-        # `host` IS ABSENT IN LOCAL MODE, and that is not a missing value to be
-        # defaulted -- there is no remote agent to link to, because the scanner
-        # is this instance. A configuration_url of "http://None" would render
-        # as a live link to nowhere on the device page.
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry_id)},
-            name=title,
-            manufacturer="nmap",
-            model="Scanner agent" if host else "Local scanner",
-            configuration_url=f"http://{host}" if host else None,
-        )
+        self._attr_device_info = scanner_device_info(entry_id, title, host)
 
 
 class EndpointEntity(CoordinatorEntity[NetworkInventoryCoordinator]):
@@ -96,8 +110,24 @@ class EndpointEntity(CoordinatorEntity[NetworkInventoryCoordinator]):
             # Never blank: a nameless row in the device list cannot be acted on.
             name=host.get("hostname") or host.get("ip") or pretty_mac(mac),
             manufacturer=host.get("vendor") or None,
-            via_device=(DOMAIN, entry_id),
         )
+        # via_device_id TAKES A REGISTRY ID, NOT AN IDENTIFIER TUPLE, AND THE
+        # TWO FAIL DIFFERENTLY. The deprecated `via_device=(DOMAIN, entry_id)`
+        # this replaces resolved the tuple itself and, when nothing matched,
+        # logged and carried on unlinked. `via_device_id` instead RAISES
+        # DeviceInfoError on an id the registry does not hold, so a value that
+        # used to degrade to "no parent link" now aborts the entity. Hence the
+        # explicit branch: resolve, and only claim a parent when there is one.
+        #
+        # `async_register_scanner_device` has already created this device by
+        # the time any endpoint is constructed -- it runs in async_setup_entry
+        # before the platforms are forwarded -- so the miss branch is the
+        # genuinely-absent case, not a startup race.
+        scanner = dr.async_get(self.coordinator.hass).async_get_device_by_identifier(
+            (DOMAIN, entry_id), entry_id
+        )
+        if scanner is not None:
+            self._attr_device_info["via_device_id"] = scanner.id
 
     @property
     def _host(self) -> dict[str, Any] | None:

@@ -15,9 +15,10 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from ..const import DOMAIN  # real top-level domain -- see scan/const.py's note
@@ -38,6 +39,7 @@ from .const import (
     MODE_LOCAL,
 )
 from .coordinator import AgentCoordinator, LocalCoordinator, NetworkInventoryCoordinator
+from .entity import scanner_device_info
 from .scan_service import async_register_services, async_unregister_services
 from .scanner import find_nmap
 from .settings import resolve_settings, split_list
@@ -154,6 +156,34 @@ async def _async_setup_local(
     )
 
 
+@callback
+def async_register_scanner_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Create the scanner's device row before any platform is forwarded.
+
+    ENDPOINTS POINT AT THIS DEVICE, so it has to exist first. Under the
+    deprecated `via_device` that ordering was not load-bearing: the registry
+    resolved the identifier tuple itself and, on a miss, logged and left the
+    endpoint unparented -- which is why on a first-ever setup every endpoint
+    landed at the top level and only picked up its parent on the NEXT
+    restart, once the button/switch platforms had created the scanner.
+    `via_device_id` does not forgive that -- an unknown id raises
+    DeviceInfoError -- so registering here turns a tolerated race into no
+    race at all, and first boot now links the same as every later one.
+
+    Idempotent: `async_get_or_create` on identifiers that already exist
+    returns the existing row rather than adding a second.
+    """
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        **scanner_device_info(
+            entry.entry_id,
+            entry.title,
+            # .get, not [] -- local mode has no agent host at all.
+            entry.data.get(CONF_HOST),
+        ),
+    )
+
+
 def async_unload_scan(hass: HomeAssistant) -> None:
     """Unregister the scan services. Platform unload is the top level's job."""
     async_unregister_services(hass)
@@ -188,7 +218,7 @@ async def async_remove_scan_device(
     is left to the person who knows which of the two happened.
 
     The scanner device itself is refused: deleting it would strand every
-    endpoint that points at it as its `via_device`.
+    endpoint that points at it as its `via_device_id`.
     """
     ours = {i[1] for i in device.identifiers if i[0] == DOMAIN}
     if entry.entry_id in ours:
