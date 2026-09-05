@@ -201,15 +201,31 @@ def project_feed(
     # system_log; nothing else would have, because the call fails harmlessly
     # and the parse then succeeds anyway.
     #
-    # A file-like object skips that branch entirely: measured with builtins
-    # .open patched, the bytes form makes one open() call and the BytesIO form
-    # makes none, for identical parsed entries.
+    # A file-like object skips that branch entirely: feedparser's own
+    # _open_resource() starts with `if hasattr(x, 'read'): return x.read()`,
+    # ahead of the open() attempt. Measured with builtins.open patched, the
+    # bare form makes one open() call and the wrapped form makes none, for
+    # identical parsed entries.
+    #
+    # BOTH INPUT TYPES ARE WRAPPED, AND str IS NOT OPTIONAL. The live feeds
+    # hand this bytes, which is the only shape the first version of this fix
+    # covered -- and io.BytesIO(str) raises TypeError, so a str caller went
+    # from working to crashing. tools/test_estate_feeds_key.py in jrackerby/HA
+    # passes a str and caught it. A str also blocks: it takes the same open()
+    # path, so leaving it unwrapped would have fixed half the defect.
+    #
+    # utf-8 IS FEEDPARSER'S OWN CHOICE, NOT A GUESS MADE HERE.
+    # _open_resource() ends `if not isinstance(x, bytes): return
+    # x.encode('utf-8')`, so encoding a str exactly reproduces the bytes it
+    # would have built for itself. Anything else would risk handing the parser
+    # a different byte sequence than it used to see.
     #
     # This does NOT touch LAW 3's ruling. feedparser stays exactly what that
-    # ruling made it -- an offline parser over bytes cyber_estate fetched
+    # ruling made it -- an offline parser over content cyber_estate fetched
     # itself -- and no network path is added or restored here. Only the shape
     # of the argument changes.
-    parsed = feedparser.parse(io.BytesIO(raw))
+    data = raw if isinstance(raw, bytes) else raw.encode("utf-8")
+    parsed = feedparser.parse(io.BytesIO(data))
     raw_entries = list(getattr(parsed, "entries", []) or [])
 
     entries: list[dict] = []
