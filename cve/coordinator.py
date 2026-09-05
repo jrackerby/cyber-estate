@@ -78,6 +78,24 @@ _LOGGER = logging.getLogger(__name__)
 MAX_PER_PRODUCT = 200
 
 
+def _is_overdue(due_str, today):
+    """Has CISA's KEV due date actually passed, or merely been set?
+
+    GH-537 (found while explaining a critical rollup to Joel): entities.py
+    used to count `f.get("due")` truthy as "overdue" -- that only checks a
+    due date EXISTS, not that today is past it, so a KEV entry added
+    yesterday with a two-week remediation window read as already overdue.
+    A date we cannot parse is not overdue either -- guessing urgency from bad
+    data is the same false-alarm shape LAW 5 exists to prevent.
+    """
+    if not due_str:
+        return False
+    try:
+        return datetime.strptime(str(due_str), "%Y-%m-%d").date() < today
+    except ValueError:
+        return False
+
+
 class NvdEstateCoordinator(DataUpdateCoordinator):
     """Joins what the estate runs to what NVD says is broken."""
 
@@ -392,6 +410,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                     "kev": True,
                     "note": f"NVD lookup failed ({err or 'empty'})",
                     "due": kev.get("dueDate"),
+                    "overdue": _is_overdue(kev.get("dueDate"), now.date()),
                 })
                 continue
 
@@ -419,7 +438,15 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                         kev.get("knownRansomwareCampaignUse", "")
                     ).lower() == "known",
                     "due": kev.get("dueDate"),
+                    "overdue": _is_overdue(kev.get("dueDate"), now.date()),
                     "name": kev.get("vulnerabilityName"),
+                    # GH-537 (Joel: "Can you add what the fixes are for the
+                    # remaining CVE exposures?"). fixed_in is only ever the
+                    # confidently-known NVD bound, never a guess -- None here
+                    # means NVD has not published a clean fix boundary yet,
+                    # which is itself worth surfacing rather than hiding.
+                    "fixed_in": cpe.fixed_in(nodes) if disp == cpe.AFFECTED else None,
+                    "remediation": kev.get("requiredAction"),
                 })
             if not matched_any:
                 # KEV says this vendor matters and no asset of ours carries the
@@ -433,6 +460,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                     "disposition": cpe.UNMONITORED,
                     "kev": True,
                     "due": kev.get("dueDate"),
+                    "overdue": _is_overdue(kev.get("dueDate"), now.date()),
                     "name": kev.get("vulnerabilityName"),
                 })
 
@@ -539,6 +567,9 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                     "sev": sev,
                     "score": score,
                     "published": (cve_obj.get("published") or "")[:10],
+                    # GH-537: same honest fixed_in as the KEV path above --
+                    # None means NVD has not published a clean fix bound yet.
+                    "fixed_in": cpe.fixed_in(nodes),
                 })
 
             worst.sort(key=lambda c: (-cpe.SEV_RANK.get(c["sev"], 0),

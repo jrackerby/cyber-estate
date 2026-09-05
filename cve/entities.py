@@ -109,7 +109,28 @@ class NvdActionableSensor(_Base):
         affected = [f for f in findings if f.get("disposition") == cpe.AFFECTED]
         unknown = [f for f in findings
                    if f.get("disposition") == cpe.UNKNOWN_VERSION]
-        overdue = [f for f in affected if f.get("due")]
+        # GH-537: `f.get("due")` truthy only means CISA SET a due date, not
+        # that it has passed -- a KEV entry added yesterday with a two-week
+        # window is not overdue. Was double-counted into "past due" on this
+        # wall tile before the coordinator started computing the real
+        # comparison in `overdue`.
+        overdue = [f for f in affected if f.get("overdue")]
+        # GH-537 (Joel: "Can you add what the fixes are for the remaining CVE
+        # exposures?"). One entry per CVE among the findings actually driving
+        # this tile, not per (cve, device) -- every device sharing a CVE
+        # shares its fix. fixed_in/remediation are already honest-or-None per
+        # cpe.fixed_in()'s own rule; passed through unchanged, never guessed
+        # here.
+        fixes = {}
+        for f in affected:
+            cve_id = f.get("cve")
+            if not cve_id or cve_id in fixes:
+                continue
+            if f.get("fixed_in") or f.get("remediation"):
+                fixes[cve_id] = {
+                    "fixed_in": f.get("fixed_in"),
+                    "remediation": f.get("remediation"),
+                }
         return {
             "counts": data.get("counts") or {},
             "affected": [
@@ -122,8 +143,13 @@ class NvdActionableSensor(_Base):
                 f"{f.get('device') or ''}".strip()
                 for f in unknown[:MAX_DETAIL]
             ],
+            "fixes": fixes,
             "ransomware_linked": sum(1 for f in affected if f.get("ransomware")),
-            "with_due_date": len(overdue),
+            # GH-537: renamed from with_due_date, which counted a due date
+            # EXISTING rather than having passed -- the old name was accurate
+            # to what it measured, and what it measured was the wrong thing
+            # for a tile the dashboard already labelled "past due".
+            "overdue": len(overdue),
             "detail_capped_at": MAX_DETAIL,
             "detail_truncated": (
                 len(affected) > MAX_DETAIL or len(unknown) > MAX_DETAIL

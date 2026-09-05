@@ -158,6 +158,32 @@ def disposition(version, nodes):
     return UNKNOWN_VERSION if saw_unknown else PATCHED
 
 
+def fixed_in(nodes):
+    """The lowest confidently-known fix version across `nodes`, or None.
+
+    Only `versionEndExcluding` is a bound NVD is willing to name as a hard
+    line -- `versionEndIncluding` says the last known-vulnerable version, not
+    the next fixed one, so it cannot answer "update to what". A node with no
+    upper bound at all (in_range's "every version affected" case) has no fix
+    version to name either. Silence here follows disposition()'s asymmetric
+    standard for PATCHED: a version this module cannot confidently name is
+    not named at all, never guessed from the nearest bound it does have.
+    """
+    bounds = []
+    for node in nodes:
+        raw = node.get("versionEndExcluding")
+        if raw in (None, "", "-", "*"):
+            continue
+        parsed = parse_version(raw)
+        if parsed is None:
+            continue
+        bounds.append((parsed, str(raw).strip()))
+    if not bounds:
+        return None
+    bounds.sort(key=lambda b: b[0])
+    return bounds[0][1]
+
+
 def severity_of(cve_obj):
     """Highest-confidence CVSS severity and score for a CVE. PURE.
 
@@ -436,6 +462,18 @@ def _self_test():
                          {"versionEndExcluding": "junk"}]),
        UNKNOWN_VERSION, "one bad node poisons a clean one -> unknown")
     eq(in_range(udm, {}), True, "no bounds at all -> all versions affected")
+
+    # --- fixed_in: the honest fix-version answer (GH-537) ---
+    eq(fixed_in([unifi_node]), "5.1.12", "single versionEndExcluding node")
+    eq(fixed_in(kernel_nodes), "4.9.301",
+       "lowest versionEndExcluding wins across nodes")
+    eq(fixed_in([{"versionEndIncluding": "5.1.12"}]), None,
+       "versionEndIncluding names the LAST vulnerable version, not a fix -- "
+       "must not be reported as one")
+    eq(fixed_in([{}]), None, "no bounds at all -> no fix version to name")
+    eq(fixed_in([{"versionEndExcluding": "junk"}]), None,
+       "unparseable bound -> no fix version, never a guess")
+    eq(fixed_in([]), None, "no nodes -> no fix version")
 
     # --- rollup ---
     eq(rollup({PATCHED, AFFECTED}), AFFECTED, "affected wins")
