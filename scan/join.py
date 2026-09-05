@@ -94,7 +94,8 @@ def join_hosts(
     result = JoinResult()
 
     for host in hosts.values():
-        if host.get("status") == "up":
+        is_up = host.get("status") == "up"
+        if is_up:
             result.hosts_up += 1
 
         ports = host.get("ports") or []
@@ -124,12 +125,77 @@ def join_hosts(
             "open_ports": host.get("port_list") or [],
         }
         if mac in acked:
+            # UNCONDITIONAL, NOT LIVENESS-GATED. KAN-294's whole point is that
+            # "we decided this one is fine" must never be silently subtracted
+            # -- an acknowledgement is a standing human decision about a
+            # device, not a live security read, so it stays listed whether or
+            # not that device happens to answer THIS scan.
             result.acknowledged.append(entry)
-        else:
+        elif is_up:
             result.unmatched.append(entry)
+        # NOT LIVE, NOT LISTED as unknown otherwise (Joel, 2026-09-05: "If the
+        # device isn't live on the network, it should not be shown as
+        # unknown"). `hosts` is the persisted inventory (KAN-294's
+        # "unknown_hosts can reach zero" already relies on it never shrinking
+        # on its own), so a device seen once and gone stays in it with
+        # `status` no longer "up" -- without this gate it would sit in
+        # `unmatched` forever, unresolvable by anyone because there is
+        # nothing on the network left to investigate. A visibility gate, not
+        # a deletion: the entry reappears the moment the host answers a scan
+        # again, matched or not.
 
     # Deterministic order so an attribute cap always drops the same tail, and
     # so the reported list does not churn between refreshes from dict ordering.
     result.unmatched.sort(key=lambda h: (h["ip"] or "", h["mac"] or ""))
     result.acknowledged.sort(key=lambda h: (h["ip"] or "", h["mac"] or ""))
     return result
+
+
+def _self_test():
+    fails = []
+
+    def eq(got, want, label):
+        if got != want:
+            fails.append(f"{label}: got {got!r}, want {want!r}")
+
+    hosts = {
+        "1": {"mac": "AA:AA:AA:AA:AA:01", "ip": "10.0.0.1", "status": "up"},
+        "2": {"mac": "AA:AA:AA:AA:AA:02", "ip": "10.0.0.2", "status": "up"},
+        # Seen before, not answering THIS scan (GH-537, Joel: "If the device
+        # isn't live on the network, it should not be shown as unknown").
+        "3": {"mac": "AA:AA:AA:AA:AA:03", "ip": "10.0.0.3", "status": "down"},
+        # Acknowledged AND currently offline -- must still show (KAN-294).
+        "4": {"mac": "AA:AA:AA:AA:AA:04", "ip": "10.0.0.4", "status": "down"},
+        # No MAC at all.
+        "5": {"ip": "10.0.0.5", "status": "up"},
+    }
+    known = ["AA:AA:AA:AA:AA:01"]
+    acked = ["AA:AA:AA:AA:AA:04"]
+
+    r = join_hosts(hosts, known, acked)
+    eq(r.matched, 1, "host 1 matched a known MAC")
+    eq([h["mac"] for h in r.unmatched], ["AA:AA:AA:AA:AA:02"],
+       "only the LIVE, unmatched, unacknowledged host is listed as unknown")
+    eq(len(r.acknowledged), 1,
+       "acknowledged host stays listed even though it is currently offline")
+    eq(r.unjoinable, 1, "host with no MAC counted separately, never as unknown")
+    eq(r.hosts_up, 3, "hosts_up counts every up host regardless of join bucket")
+
+    # PROOF THIS HARNESS CAN FAIL (LAW section 4), by mutation:
+    #   `elif is_up:` replaced with unconditional `else:`
+    #       -> "only the LIVE, unmatched..." fails, host 3 reappears
+    # Re-run that way after changing this comparison; a green self-test on
+    # unmutated code proves nothing on its own.
+    return fails
+
+
+if __name__ == "__main__":
+    import sys
+
+    problems = _self_test()
+    if problems:
+        print("join.py SELF-TEST FAILED")
+        for p in problems:
+            print("  " + p)
+        sys.exit(1)
+    print("join.py self-test: all assertions passed")
