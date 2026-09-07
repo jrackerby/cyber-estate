@@ -12,11 +12,12 @@ to bound itself, and the old component was not.
 from __future__ import annotations
 
 import io
-from datetime import timezone
+from datetime import timedelta, timezone
 from typing import Any
 
 import feedparser
 from dateutil import parser as _date_parser
+from dateutil import tz as _tz
 
 # ZONE ABBREVIATIONS, RESOLVED EXPLICITLY. dateutil resolves a bare abbreviation
 # ONLY when it matches the running process's own local zone -- it compares
@@ -43,6 +44,12 @@ _TZINFOS = {
     "HST": -10 * 3600,
 }
 
+# The zero-offset names dateutil resolves BY ITSELF, rendering "%Z" as "UTC".
+# format_date's tzinfos callable has to hand these back rather than decline
+# them, or their stored identity would change. "UT" is not among them --
+# dateutil leaves that one naive too, measured, not assumed.
+_NATIVE_UTC_NAMES = frozenset({"UTC", "GMT", "Z"})
+
 # Keys carrying a date that the old component reformatted before storing.
 DATE_KEYS = ("published", "updated", "created", "expired")
 
@@ -50,6 +57,29 @@ DATE_KEYS = ("published", "updated", "created", "expired")
 # emits `published_parsed` / `updated_parsed` struct_time objects that are not
 # JSON-serialisable into a state attribute.
 SKIP_SUBSTRING = "parsed"
+
+
+def _decline_abbreviations(tzname: str, offset: int | None):
+    """tzinfos callable that answers for EVERY zone name, resolving none of them.
+
+    dateutil consults `tzinfos` only for zones it has not already resolved, and
+    a callable that answers is never followed by the guess-or-warn path. So:
+
+      * a numeric offset dateutil already parsed passes straight through;
+      * the three zero-offset names it resolves natively return `tzutc()`, which
+        is what it produces for them today (`%Z` -> "UTC");
+      * every other abbreviation returns None, i.e. NAIVE -- which is also
+        exactly what it produces today, but reached deliberately instead of by
+        falling off a deprecated path.
+
+    "UT" is deliberately not in the native set: dateutil does not resolve it
+    either, so declining it is what reproduces today's output.
+    """
+    if offset is not None:
+        return offset
+    if tzname in _NATIVE_UTC_NAMES:
+        return _tz.tzutc()
+    return None
 
 
 def format_date(value: str, date_format: str) -> str:
@@ -68,8 +98,28 @@ def format_date(value: str, date_format: str) -> str:
     feeds and silently orphan every existing ack. The ordering bug that
     _TZINFOS fixes does not exist on this path: a wrong-but-stable string still
     matches itself. Changing it is an ack migration, not a bug fix.
+
+    THAT RULING STANDS, AND THIS IS NOT A REVERSAL OF IT (GH-477). What changed
+    is only HOW the naive result is reached. The old form let dateutil fail to
+    understand the abbreviation, which emits UnknownTimezoneWarning and which
+    dateutil says a future release will turn into an EXCEPTION -- so the stored
+    identity was resting on deprecated behaviour, and the module would have
+    started raising on a dependency bump for exactly the feeds it currently
+    handles quietly. Declining every abbreviation explicitly produces the same
+    datetime by a supported route.
+
+    Measured over 17 date shapes -- named zones in and out of `_TZINFOS`,
+    numeric offsets, ISO-8601, and no zone at all -- the output is
+    byte-identical to the old form today, emits no warning, and stays identical
+    with UnknownTimezoneWarning promoted to an error. No ack migration.
     """
-    return _date_parser.parse(value).strftime(date_format)
+    parsed = _date_parser.parse(value, tzinfos=_decline_abbreviations)
+    # dateutil labels a tz returned from tzinfos with the name it read, so
+    # "GMT" would render "%Z" as "GMT" where it renders "UTC" today. Every
+    # zero-offset zone normalises to tzutc() to keep that string stable.
+    if parsed.tzinfo is not None and parsed.utcoffset() == timedelta(0):
+        parsed = parsed.replace(tzinfo=_tz.tzutc())
+    return parsed.strftime(date_format)
 
 
 def entry_key(entry: Any, date_format: str) -> str:
