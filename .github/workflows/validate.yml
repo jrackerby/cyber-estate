@@ -105,11 +105,17 @@ jobs:
           # custom-repository install works. They are still worth running: they
           # are the only automated read on this repo's public presentation.
           #
-          # `topics` and `license` used to be ignored here because a private
-          # repo had neither. Both are set now, so both are ENFORCED -- going
-          # on ignoring a check that would pass is how a gate stops being one.
+          # `topics` is set on the repository now and is ENFORCED -- it passed
+          # on this branch's first run.
+          #
+          # `license` is still ignored HERE ONLY, and only until this lands.
+          # GitHub detects a repository's license from its DEFAULT BRANCH, so
+          # the LICENSE this pull request adds is invisible to the check while
+          # it is still on the branch: enforcing it now deadlocks the very
+          # commit that fixes it. The follow-up removes this word once master
+          # carries the file.
           #
           # `brands` stays ignored: it needs either brand/icon.png committed
           # here or an accepted PR against home-assistant/brands, and until one
           # of those exists the check can only ever fail.
-          ignore: brands
+          ignore: brands license
