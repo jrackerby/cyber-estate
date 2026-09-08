@@ -62,6 +62,44 @@ jobs:
 
       - uses: home-assistant/actions/hassfest@master
 
+  tests:
+    # This repo had NO suite at all until now (jrackerby/HA#672): hassfest
+    # validates the manifest and never imports the code, and the hacs job below
+    # is a VOID while the repo is private, so a change could rename a symbol or
+    # break the scan resolver and reach the live estate behind a fully green
+    # required-check set.
+    #
+    # These six suites came from jrackerby/HA's tools/ (#668). Their SUBJECT is
+    # this component's source -- they load scan/ and feeds/ modules by path --
+    # so they had to move with it the moment HACS, rather than a submodule,
+    # started delivering this component. Left there they simply failed to
+    # import, which is what caught the omission.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # From tests/requirements.txt, never a list written here -- a second copy
+      # goes stale the moment a test grows an import, and the resulting
+      # collection error reads like a broken test rather than a missing
+      # declaration (LAW 15, the GH-670 worked example).
+      - name: install what the suite declares it needs
+        run: |
+          set -euo pipefail
+          test -f tests/requirements.txt \
+            || { echo "CANNOT RUN: tests/requirements.txt is missing -- the suite's dependencies are undeclared and a pass here would be luck"; exit 1; }
+          cat tests/requirements.txt
+          pip install -r tests/requirements.txt
+
+      # PURE LAYER: these load scan/ and feeds/ modules directly and never
+      # import homeassistant, so a red result is attributable to a decision in
+      # this repo rather than to a core release moving underneath it.
+      - name: run every suite
+        run: ./tools/run_tests.sh
+
   hacs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
