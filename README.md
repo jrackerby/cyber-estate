@@ -1,9 +1,9 @@
-# Cyber Estate
+# Cyber Monitor
 
-Security posture for the estate, as one Home Assistant config entry.
+Security posture for your network, as one Home Assistant config entry.
 
-It is a merge of three previously independent integrations — `estate_feeds`,
-`nvd_estate` and `network_inventory` — into one. That merge is the reason the
+It merges what used to be three independent integrations — advisory feeds,
+CVE lookups and network scanning — into one. That merge is the reason the
 setup path behaves the way it does:
 
 - **feeds** and **cve** coordinators *never* raise. An unreadable source is a
@@ -23,7 +23,7 @@ Platforms: `button`, `sensor`, `switch`.
   resolves feed timezone *abbreviations* from an explicit table rather than by
   matching the host's local zone, which is what dateutil does by default and
   which silently mis-ordered entries on any host outside the feed's zone.
-- **cve** — NVD lookups against the estate's own inventory.
+- **cve** — NVD lookups against the inventory it builds.
 - **scan** — nmap sweeps, unknown-host detection, MAC acknowledgement.
 
 ## Configuration
@@ -50,9 +50,9 @@ installed by Home Assistant.
 
 ## Install
 
-**Via HACS.** HACS → ⋮ → *Custom repositories* → `https://github.com/jrackerby/cyber-estate`,
+**Via HACS.** HACS → ⋮ → *Custom repositories* → `https://github.com/jrackerby/ha-cyber-monitor`,
 category **Integration**. Install, restart Home Assistant, then add it under
-*Settings → Devices & Services → Add Integration → "Cyber Estate"*.
+*Settings → Devices & Services → Add Integration → "Cyber Monitor"*.
 
 The integration lives at the repository **root**, not under
 `custom_components/`. `hacs.json` declares `content_in_root: true`, so HACS
@@ -60,7 +60,7 @@ copies the root into `/config/custom_components/cyber_estate/`.
 
 ## Development
 
-Issues and feature requests: **[jrackerby/cyber-estate/issues](https://github.com/jrackerby/cyber-estate/issues)**.
+Issues and feature requests: **[jrackerby/ha-cyber-monitor/issues](https://github.com/jrackerby/ha-cyber-monitor/issues)**.
 
 CI runs [hassfest](https://developers.home-assistant.io/blog/2020/04/16/hassfest)
 and HACS validation on every push. hassfest scans `custom_components/*` and

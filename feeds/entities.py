@@ -79,7 +79,7 @@ class FeedSensor(CoordinatorEntity, SensorEntity):
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, "estate_feeds")},
-            name="Estate Feeds",
+            name="Advisory Feeds",
             manufacturer="Local",
             model="Bounded RSS collector",
             entry_type="service",

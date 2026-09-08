@@ -69,8 +69,8 @@ class _Base(CoordinatorEntity[NvdEstateCoordinator], SensorEntity):
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, DOMAIN)},
-            name="NVD Estate",
-            manufacturer="El Coronel Luz",
+            name="NVD Vulnerabilities",
+            manufacturer="Cyber Monitor",
             model="Vulnerability applicability",
             entry_type="service",
         )
