@@ -21,7 +21,7 @@ custom_scan:
         Optional. An address, a range like 192.0.2.0/24, or several separated
         by commas. Leave empty to scan everything this integration is
         configured for.
-      example: "203.0.113.0/24"
+      example: "192.0.2.0/24"
       required: false
       selector:
         text:

@@ -215,7 +215,7 @@ def validate_target(target: str) -> str:
     except ValueError:
         pass
 
-    # nmap's own octet-range form, e.g. 203.0.113.1-64
+    # nmap's own octet-range form, e.g. 192.168.1.1-64
     if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}-\d{1,3}", value):
         return value
 

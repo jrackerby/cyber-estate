@@ -6,8 +6,8 @@ either a missed intruder or an alert that cries wolf until it is muted. Logic
 with that failure mode has to be runnable in a test without booting anything.
 
 MAC IS NORMALISED THROUGH ONE FUNCTION, APPLIED TO BOTH SIDES. The scanner
-emits `AA:BB:CC:DD:EE:01`; a device registry may hold `88a29ee1ea23` or
-`88-a2-9e-e1-ea-23`. Normalising only one side, or normalising each side with a
+emits `AA:BB:CC:DD:EE:FF`; a device registry may hold `aabbccddeeff` or
+`aa-bb-cc-dd-ee-ff`. Normalising only one side, or normalising each side with a
 different helper, produces a join that silently matches nothing -- and a join
 that matches nothing reports every host as unknown, which looks like a working
 alarm rather than a broken comparison.
