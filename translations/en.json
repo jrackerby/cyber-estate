@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Cyber Estate — NVD API key",
-        "description": "Cyber Estate combines CISA/CDC feed monitoring, CISA KEV + NVD vulnerability matching, and network scanning under one integration.\n\nFirst, an NVD key: a free API key from nvd.nist.gov raises the rate limit from 5 to 50 requests per 30 seconds. Joins CISA KEV and NVD to what this estate actually runs, so a CVE is dispositioned against installed versions instead of counted because a vendor name matched. The key is stored in the config entry and never written to a YAML file.",
+        "title": "Cyber Monitor — NVD API key",
+        "description": "Cyber Monitor combines CISA/CDC feed monitoring, CISA KEV + NVD vulnerability matching, and network scanning under one integration.\n\nFirst, an NVD key: a free API key from nvd.nist.gov raises the rate limit from 5 to 50 requests per 30 seconds. Joins CISA KEV and NVD to what your network actually runs, so a CVE is dispositioned against installed versions instead of counted because a vendor name matched. The key is stored in the config entry and never written to a YAML file.",
         "data": {
           "api_key": "NVD API key"
         }
@@ -63,14 +63,14 @@
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "Cyber Estate is already set up. Use Reconfigure to rotate the NVD key.",
+      "already_configured": "Cyber Monitor is already set up. Use Reconfigure to rotate the NVD key.",
       "reauth_successful": "The new key was accepted and the integration reloaded."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Cyber Estate options",
+        "title": "Cyber Monitor options",
         "description": "Each of these edits a different thing and saves on its own. Nothing here restarts the integration or touches the scan history — a change is live on the scanner's next tick, within a few minutes.",
         "menu_options": {
           "scan_scope": "Networks to scan",

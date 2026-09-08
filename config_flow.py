@@ -168,7 +168,7 @@ async def _validate_nvd_key(hass, api_key) -> str | None:
         async with session.get(
             NVD_CVE_URL,
             params={"cveId": _PROBE_CVE},
-            headers={"apiKey": api_key, "User-Agent": "cyber-estate/1.0"},
+            headers={"apiKey": api_key, "User-Agent": "ha-cyber-monitor/1.0"},
             timeout=30,
         ) as resp:
             if resp.status in (401, 403):
@@ -259,7 +259,7 @@ class CyberEstateConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if not errors:
                 return self.async_create_entry(
-                    title="Cyber Estate",
+                    title="Cyber Monitor",
                     data={
                         **self._api_key_data,
                         **user_input,
@@ -304,7 +304,7 @@ class CyberEstateConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(
-                    title="Cyber Estate",
+                    title="Cyber Monitor",
                     data={
                         **self._api_key_data,
                         **user_input,

@@ -248,7 +248,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
         Never raises. Every caller has to be able to tell "answered" from
         "did not answer", so a failure is a value here, not an exception.
         """
-        headers = {"User-Agent": "nvd-estate/0.1"}
+        headers = {"User-Agent": "ha-cyber-monitor/0.1"}
         if self._api_key:
             headers["apiKey"] = self._api_key
         try:
