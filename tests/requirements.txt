@@ -1,0 +1,17 @@
+# Declared BESIDE the suite, never listed in the workflow (jrackerby/HA LAW 15,
+# GH-670): a copy in CI goes stale the moment a test grows an import, and the
+# failure it produces is a collection error that reads like a broken test rather
+# than a missing declaration.
+#
+# PINNED TO WHAT manifest.json SHIPS, not floated. The suite exists to judge the
+# code Home Assistant will actually run, so testing against a newer feedparser
+# than the component declares would be a pass on the wrong channel.
+#
+# Derived by AST over the suite and the modules it loads by path, checked
+# against sys.stdlib_module_names. aiohttp, voluptuous and homeassistant are
+# deliberately ABSENT: they are imported by coordinator.py, config_flow.py and
+# __init__.py, which these pure-layer suites never load. That is the whole point
+# of the pure layer -- a red result here is attributable to a decision in this
+# repo rather than to a core release moving underneath it.
+feedparser==6.0.11
+python-dateutil>=2.8.2
