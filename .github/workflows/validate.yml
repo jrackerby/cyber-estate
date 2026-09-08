@@ -146,14 +146,13 @@ jobs:
           # `topics` is set on the repository now and is ENFORCED -- it passed
           # on this branch's first run.
           #
-          # `license` is still ignored HERE ONLY, and only until this lands.
-          # GitHub detects a repository's license from its DEFAULT BRANCH, so
-          # the LICENSE this pull request adds is invisible to the check while
-          # it is still on the branch: enforcing it now deadlocks the very
-          # commit that fixes it. The follow-up removes this word once master
-          # carries the file.
+          # `license` is ENFORCED again: master carries the LICENSE now and
+          # GitHub reports the repository as MIT, so the check passes. It was
+          # ignored for exactly one commit because GitHub detects a licence
+          # from the DEFAULT BRANCH, which made the LICENSE invisible while it
+          # sat on the branch that added it.
           #
           # `brands` stays ignored: it needs either brand/icon.png committed
           # here or an accepted PR against home-assistant/brands, and until one
           # of those exists the check can only ever fail.
-          ignore: brands license
+          ignore: brands
