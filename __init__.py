@@ -22,6 +22,7 @@ from homeassistant.helpers.device_registry import DeviceEntry
 from .const import DOMAIN, PLATFORMS
 from .cve.coordinator import NvdEstateCoordinator
 from .feeds.coordinator import EstateFeedsCoordinator
+from .runtime import KEY_SCAN, scan_coordinator_of
 from .scan import (
     async_register_scanner_device,
     async_remove_scan_device,
@@ -50,10 +51,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # going unparented. See async_register_scanner_device.
     async_register_scanner_device(hass, entry)
 
+    # THE ONLY WRITE. Every read of this dict goes through runtime.py --
+    # KEY_SCAN is the same constant the accessor there indexes with, so a
+    # rename cannot land on this line and miss a reader (GH-707).
     entry.runtime_data = {
         "feeds": feeds_coordinator,
         "cve": cve_coordinator,
-        "scan": scan_coordinator,
+        KEY_SCAN: scan_coordinator,
     }
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -69,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await entry.runtime_data["scan"].async_refresh()
+    await scan_coordinator_of(entry).async_refresh()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -110,6 +114,6 @@ async def async_remove_config_entry_device(
     hook means HA refuses removal by default).
     """
     if any(i[0] == DOMAIN for i in device.identifiers):
-        scan_coordinator = entry.runtime_data["scan"]
+        scan_coordinator = scan_coordinator_of(entry)
         return await async_remove_scan_device(hass, entry, device, scan_coordinator)
     return False

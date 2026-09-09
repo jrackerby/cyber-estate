@@ -33,6 +33,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
 from ..const import DOMAIN  # real top-level domain -- see scan/const.py's note
+from ..runtime import scan_coordinators
 from .options import (
     OPTION_KEYS,
     InvalidScanRequest,
@@ -70,27 +71,35 @@ SCAN_DEVICE_SCHEMA = vol.Schema(
 
 
 def _local_coordinators(hass: HomeAssistant) -> list[Any]:
-    """Every loaded entry that can actually run a scan here."""
-    found = []
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        coordinator = getattr(entry, "runtime_data", None)
-        if coordinator is not None and hasattr(coordinator, "async_run_custom_scan"):
-            found.append(coordinator)
-    return found
+    """Every loaded entry that can actually run a scan here.
+
+    THE LOOKUP ITSELF LIVES IN `..runtime` AND IS TESTED THERE. This function
+    is the HA-shaped half -- asking the registry which entries exist -- and
+    nothing more. GH-707: the version that inlined the lookup read
+    `entry.runtime_data` as if it were still one coordinator, so it matched
+    nothing on any configuration and both services refused every call.
+    """
+    return scan_coordinators(hass.config_entries.async_entries(DOMAIN))
 
 
 def _one_coordinator(hass: HomeAssistant):
     coordinators = _local_coordinators(hass)
     if not coordinators:
         raise HomeAssistantError(
-            "no network_inventory entry is set up to scan from Home Assistant; "
-            "custom scans need an entry in local mode"
+            # NAMES THE DOMAIN THAT CAN ACTUALLY EXIST. This message used to
+            # say "network_inventory", a domain retired at the KAN-344 merge,
+            # and GH-707 was read as a missing config entry for exactly that
+            # long -- an entry under that name cannot be created, so it can
+            # never be found missing. A message that sends the reader
+            # somewhere unreachable is worse than a bare failure.
+            "no cyber_estate entry is set up to scan from Home Assistant; "
+            "custom scans need an entry whose mode is local"
         )
     if len(coordinators) > 1:
         # REFUSED RATHER THAN GUESSED. Picking the first would silently scan
         # the wrong network, and the result would look entirely plausible.
         raise HomeAssistantError(
-            "more than one local network_inventory entry is configured; "
+            "more than one local cyber_estate entry is configured; "
             "custom scans cannot tell which network you mean"
         )
     return coordinators[0]
