@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .cve.entities import build_cve_sensors
 from .feeds.entities import build_feed_sensors
+from .runtime import scan_coordinator_of
 from .scan.entities import setup_scan_sensors
 
 
@@ -31,4 +32,4 @@ async def async_setup_entry(
         *build_cve_sensors(data["cve"]),
     ]
     async_add_entities(static_entities)
-    setup_scan_sensors(hass, entry, data["scan"], async_add_entities)
+    setup_scan_sensors(hass, entry, scan_coordinator_of(entry), async_add_entities)
