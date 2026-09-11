@@ -65,7 +65,7 @@ CONF_ACKNOWLEDGED_MACS = "acknowledged_macs"
 DEFAULT_PORT = 8765
 DEFAULT_NAME = "Network Inventory"
 
-# The estate's own conventions, offered as defaults so the common case is one
+# Common conventions, offered as defaults so the usual case is one
 # confirmation rather than four lookups. Every one is overridable; none is
 # hard-coded anywhere else (see the header).
 DEFAULT_SSH_KEY = "/config/.ssh/kiosk_key"

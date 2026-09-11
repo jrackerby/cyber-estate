@@ -43,7 +43,7 @@ import time
 # under test to be the one that will be used.
 #
 # This pin makes the TEST deterministic. feedparse.py's own host-dependence was
-# the separate half of the same bug and is fixed in cyber-estate:
+# the separate half of the same bug and is fixed in this component:
 # _TZINFOS there resolves abbreviations explicitly, so the module no longer
 # leans on the coincidence either. The pin stays regardless -- the EDT fixture
 # below still needs a known zone to be a meaningful assertion, and a test that

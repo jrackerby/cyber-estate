@@ -554,7 +554,7 @@ class CyberEstateOptionsFlow(OptionsFlow):
     acknowledged MACs on every refresh, so a saved change is live on the next
     tick without restarting three subsystems -- and, critically, without
     touching the inventory store, which holds `first_seen` for the whole
-    estate and is the reason "delete the entry and set it up again" was never
+    inventory and is the reason "delete the entry and set it up again" was never
     an acceptable way to add a subnet.
 
     SCOPE AND SCHEDULE ARE LOCAL MODE ONLY, and are not offered in agent mode

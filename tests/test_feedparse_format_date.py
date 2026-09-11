@@ -45,16 +45,12 @@ except AttributeError:  # non-POSIX
     pass
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-CANDIDATES = [
-    REPO / "feeds" / "feedparse.py",
-    pathlib.Path.home() / "repos" / "cyber-estate" / "feeds" / "feedparse.py",
-]
-
-MODULE_PATH = next((p for p in CANDIDATES if p.is_file()), None)
-if MODULE_PATH is None:
-    print("SKIP: feedparse.py not found in either the submodule or ~/repos/cyber-estate")
-    print("      (feeds/feedparse.py not found in this repo)")
-    raise SystemExit(0)
+MODULE_PATH = REPO / "feeds" / "feedparse.py"
+if not MODULE_PATH.is_file():
+    # Not a skip: feedparse.py lives in this repo, so its absence is a broken
+    # checkout, and a suite that skips itself over that is a vacuous green.
+    print(f"FAIL: {MODULE_PATH} not found -- this repo owns feeds/feedparse.py")
+    raise SystemExit(1)
 
 # Loaded BY FILE PATH, not through the package: importing cyber_estate would
 # pull in __init__.py and its homeassistant imports, which this module's own

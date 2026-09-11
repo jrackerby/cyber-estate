@@ -10,7 +10,7 @@ therefore refused every call network-wide from the merge onward.
 
 THE COST WAS PAID ON THE MESSAGE, NOT THE CALL. The refusal named a missing
 prerequisite ("no network_inventory entry is set up to scan"), so it read as an
-estate configuration gap rather than an accessor bug -- and it named a domain
+configuration gap rather than an accessor bug -- and it named a domain
 that has not existed since the merge, which cannot be created and so cannot be
 found missing. A reader went looking for the entry instead of at the lookup.
 Hence the rule: a config key read by two code paths goes through ONE

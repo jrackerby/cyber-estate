@@ -12,7 +12,7 @@ WHAT THIS DOES, IN ORDER
        so this one states what it misses instead of quietly shrinking its own
        denominator.
     2. Fetch the CISA KEV catalog and keep entries whose vendor/product/name
-       matches an estate keyword. KEV is the high-signal source: every entry is
+       matches an inventory keyword. KEV is the high-signal source: every entry is
        confirmed actively exploited.
     3. Look each surviving KEV CVE up in NVD to get its cpeMatch ranges.
     4. Disposition every (cve, asset) pair through cpe.disposition().

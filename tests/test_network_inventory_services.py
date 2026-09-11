@@ -137,7 +137,7 @@ check("never-scanned count is reported, not hidden",
       c["hosts_never_port_scanned"], 2)
 check("coverage percentage", c["coverage_pct"], 60.0)
 check("distinct services", c["distinct_services"], 2)
-check("empty estate does not divide by zero", sv.census({})["coverage_pct"], 0.0)
+check("an empty inventory does not divide by zero", sv.census({})["coverage_pct"], 0.0)
 
 print("\nssh_probe.host_runs_ssh -- tri-state")
 check("runs ssh", ssh.host_runs_ssh(scanned_with_ssh), True)

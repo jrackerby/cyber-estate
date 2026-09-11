@@ -164,7 +164,7 @@ SENSORS: tuple[NetworkInventorySensorDescription, ...] = (
         # this one is not the odd sensor out with no trend.
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda v: v.service_census["distinct_services"],
-        # The whole estate in one entity: which services run where, how many
+        # The whole network in one entity: which services run where, how many
         # hosts each is on, and how much of the network is unproven. Capped
         # nowhere, because the distinct-service count is bounded by what nmap
         # can name rather than by the size of the network -- 19 here.
@@ -271,7 +271,7 @@ ENDPOINT_SENSORS: tuple[EndpointSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         # THE PER-HOST COVERAGE READING. Unknown here is the honest state for a
         # host that has never been port-scanned, and it is what makes the
-        # estate's blind spot visible device by device rather than only as an
+        # blind spot visible device by device rather than only as an
         # aggregate nobody drills into.
         value_fn=lambda h: dt_util.parse_datetime(h.get("ports_scanned_at") or ""),
     ),

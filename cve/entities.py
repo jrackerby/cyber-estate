@@ -247,7 +247,7 @@ class NvdRecentAffectedSensor(_Base):
     counted by vendor name.
 
     Expect this to be non-zero and to stay non-zero. That is the honest state
-    of any estate running general-purpose operating systems, and it is why it
+    of any network running general-purpose operating systems, and it is why it
     is reported separately rather than folded into a number that is supposed to
     mean "act now".
     """

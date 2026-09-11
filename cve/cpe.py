@@ -136,7 +136,7 @@ def disposition(version, nodes):
     """Disposition an installed version against a CVE's cpeMatch nodes.
 
     `nodes` are ONLY the nodes whose CPE product matched an asset we own --
-    filtering by product is the caller's job, because that is estate knowledge
+    filtering by product is the caller's job, because that is inventory knowledge
     and this module holds none.
 
     AFFECTED wins over everything: one node placing us in range is enough.
@@ -426,7 +426,7 @@ def _self_test():
     eq(_cmp((5, 1, 27), (5, 1, 12)), 1, "5.1.27 > 5.1.12")
     eq(_cmp((5, 1, 2), (5, 1, 12)), -1, "5.1.2 < 5.1.12 (not string order)")
 
-    # --- the three real estate cases, from live data 2026-08-11 ---
+    # --- the three real-world cases, from live data 2026-08-11 ---
     udm = parse_version("5.1.27.33981")
     unifi_node = {"versionEndExcluding": "5.1.12"}
     eq(disposition(udm, [unifi_node]), PATCHED, "UDM 5.1.27 vs <5.1.12")

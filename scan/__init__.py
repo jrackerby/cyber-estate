@@ -194,7 +194,7 @@ async def async_remove_scan_entry(hass: HomeAssistant, entry: ConfigEntry) -> No
 
     Only on REMOVAL, never on unload. An unload happens on every restart and
     every reload; deleting the inventory there would destroy `first_seen` for
-    the whole estate on a routine restart, and no amount of rescanning brings
+    the whole network on a routine restart, and no amount of rescanning brings
     it back.
     """
     if entry.data.get(CONF_MODE) == MODE_LOCAL:
