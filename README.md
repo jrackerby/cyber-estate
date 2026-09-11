@@ -48,6 +48,42 @@ so those steps are not offered rather than offered and ignored.
 Requires `feedparser` and `python-dateutil`, declared in the manifest and
 installed by Home Assistant.
 
+## Actions
+
+Both are local-mode only. With a separate scanner agent the v1 API exposes no
+custom-scan channel, so they refuse rather than appearing to work.
+
+- **`cyber_estate.custom_scan`** — sweep now, choosing what to look for.
+  `targets` is optional and defaults to everything the entry is configured for;
+  the rest are toggles that each cost time (service and version detection, OS
+  identification, all 65,535 ports, safe detection scripts, common UDP ports,
+  scanning addresses that ignore ping, traceroute). `fast_timing` and
+  `thorough_timing` are mutually exclusive.
+- **`cyber_estate.scan_device`** — rescan one device at its current address,
+  with service detection on by default. This is the answer for phones and
+  tablets, which are asleep when the scheduled sweep runs and so never get
+  service data from it.
+
+Every field is described in `services.yaml`, which is what Home Assistant
+renders in Developer Tools and the automation editor.
+
+## Removal
+
+Delete the entry under *Settings → Devices & Services*, then remove the
+integration from HACS.
+
+**Deleting the entry destroys the scan inventory.** That store is what holds
+`first_seen` for every device on the network, and `async_remove_entry` drops it
+with the entry — deliberately, since removing the subject is how you erase the
+subject. The recorder keeps only the sensor values that were published, not the
+rows behind them, so it cannot reconstruct the store. If you want that history,
+export it before removing the entry. This is also why adding a subnet goes
+through *Configure* rather than a rebuild.
+
+Individual discovered devices can be removed from the device page; one that is
+still being seen on the network refuses, because it would reappear on the next
+sweep.
+
 ## Install
 
 **Via HACS.** HACS → ⋮ → *Custom repositories* → `https://github.com/jrackerby/ha-cyber-monitor`,
