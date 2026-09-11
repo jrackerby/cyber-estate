@@ -15,7 +15,7 @@ becomes a different device.
 DIFFERENT JOBS. `identifiers` is this integration's own handle and is what
 makes the device stable across restarts. `connections` states the MAC as a
 network fact, which is what surfaces it in the UI and what any future
-cross-integration matching would key on. Measured on this estate: Home
+cross-integration matching would key on. Measured on this network: Home
 Assistant does NOT merge device records across config entries on a matching
 connection -- an endpoint that another integration already knows will appear
 twice. That duplication is accepted here as an explicit decision, not an

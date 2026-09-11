@@ -1,4 +1,4 @@
-"""Config flow for cyber_estate -- KAN-344 merge of nvd_estate's API-key
+"""Config flow for cyber_estate -- merge of nvd_estate's API-key
 step and network_inventory's local/agent scan setup into one sequential
 flow, producing ONE config entry for all three subsystems.
 
@@ -134,7 +134,7 @@ STEP_LOCAL = vol.Schema(
 def _validated_scope(user_input: dict[str, Any]) -> tuple[list[str], list[str]]:
     """Split and validate the target/exclude fields. Raises InvalidScanRequest.
 
-    ONE VALIDATOR FOR BOTH FLOWS (GH-508). Setup collects these fields and the
+    ONE VALIDATOR FOR BOTH FLOWS. Setup collects these fields and the
     options flow edits them afterwards, and a second copy of this parsing is
     exactly how the two end up disagreeing about what a trailing comma or a
     bare hostname means -- the initial form would refuse a value the options
@@ -533,18 +533,18 @@ class CyberEstateConfigFlow(ConfigFlow, domain=DOMAIN):
 class CyberEstateOptionsFlow(OptionsFlow):
     """Everything about a running entry that is safe to change in place.
 
-    NARROW AND ADDITIVE, ONE CONCERN PER STEP. It began as KAN-294's single
+    NARROW AND ADDITIVE, ONE CONCERN PER STEP. It began as a single
     acknowledged-MACs field, deliberately not touching `entry.data`, and it
     keeps that shape: each step writes the handful of keys it owns and merges
     them over whatever is already stored. A wholesale-data options flow -- one
     form carrying every setting -- creates the "resubmit everything or lose a
-    field" trap this estate has paid for elsewhere, and it would put the NVD
+    field" trap this network has paid for elsewhere, and it would put the NVD
     key and the agent token on a form nobody opened to change them.
 
     THE MERGE IS LOAD BEARING. `async_create_entry(data=...)` REPLACES the
     options mapping wholesale, so a step that returns only its own keys
     silently deletes every other step's. Harmless while there was exactly one
-    step and latent from KAN-294 onwards; the moment GH-508 added a second,
+    step and latent from then onwards; the moment a second step was added,
     saving a subnet list would have cleared the acknowledged MACs and put
     `unknown_hosts` back up by however many had been acknowledged -- a number
     moving on its own, with no edit to point at.
@@ -565,7 +565,7 @@ class CyberEstateOptionsFlow(OptionsFlow):
     {profile, enabled} only. There is no endpoint an interval could be sent
     to, so a form here would be a control that looks live and does nothing --
     the exact failure the pinned profile list and the option vocabulary are
-    both written to prevent. jrackerby/HA#508 carries that half.
+    both written to prevent.
     """
 
     async def async_step_init(
@@ -706,12 +706,12 @@ class CyberEstateOptionsFlow(OptionsFlow):
             ),
         )
 
-    # -- KAN-294: acknowledge a MAC `unknown_hosts` cannot otherwise clear ----
+    # -- acknowledge a MAC `unknown_hosts` cannot otherwise clear ----
 
     async def async_step_acknowledged_macs(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """A MAC Joel has looked at and decided is accounted for.
+        """A MAC an operator has looked at and decided is accounted for.
 
         Read live by the coordinator every refresh (`_acknowledged_macs()`),
         so acking a host takes effect on the next tick, no reload required.

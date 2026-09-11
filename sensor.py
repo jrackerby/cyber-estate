@@ -1,6 +1,6 @@
 """Sensor platform dispatcher for cyber_estate.
 
-KAN-344 MERGE. Each subsystem's entity classes live unchanged in their own
+MERGE NOTE. Each subsystem's entity classes live unchanged in their own
 subpackage (feeds/entities.py, cve/entities.py, scan/entities.py) -- this
 file only resolves entry.runtime_data's three coordinators and hands each
 to its subsystem's own setup. feeds and cve return a static list (both

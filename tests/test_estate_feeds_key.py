@@ -33,17 +33,17 @@ import time
 # runner, where 15:00 EDT decoded as 15:00 UTC: earlier than the 18:00 GMT entry
 # instead of later, so latest_entry_key named the other item and the check that
 # exists to prove zones are honoured reported the zone-blind answer. That is the
-# benign-looking state LAW 9 says to name and measure, and it is why this test
+# benign-looking state the rule says to name and measure, and it is why this test
 # had never once passed in CI.
 #
 # Pinned HERE rather than as a TZ= in tools-tests.yml on purpose: the dependency
 # is the test's, so it travels with the file and holds however it is invoked --
 # CI, the HA host, or a bare shell. America/New_York is not arbitrary; it is the
-# zone the consuming integration actually runs in, and LAW 9 wants the channel
+# zone the consuming integration actually runs in, and the rule wants the channel
 # under test to be the one that will be used.
 #
 # This pin makes the TEST deterministic. feedparse.py's own host-dependence was
-# the separate half of the same bug and is fixed in cyber-estate (GH-478):
+# the separate half of the same bug and is fixed in cyber-estate:
 # _TZINFOS there resolves abbreviations explicitly, so the module no longer
 # leans on the coincidence either. The pin stays regardless -- the EDT fixture
 # below still needs a known zone to be a meaningful assertion, and a test that
@@ -58,7 +58,7 @@ if time.tzname != ("EST", "EDT"):
     )
 
 HERE = pathlib.Path(__file__).resolve().parent
-# KAN-344: estate_feeds merged into cyber_estate's feeds/ subpackage.
+# estate_feeds merged into cyber_estate's feeds/ subpackage.
 CANDIDATES = [
     HERE.parent / "feeds" / "feedparse.py",
     pathlib.Path("/config/custom_components/cyber_estate/feeds/feedparse.py"),
@@ -160,7 +160,7 @@ def main() -> int:
     check("latest/honours-timezone", fp.latest_entry_key(zones, FMT), "EDT-1500")
 
     # A NON-LOCAL abbreviation, which is the case the TZ pin above cannot
-    # rescue and _TZINFOS in feedparse.py exists for. PDT is never the estate
+    # rescue and _TZINFOS in feedparse.py exists for. PDT is never the network
     # host's zone, so dateutil resolves it only if the module hands it a
     # tzinfos table; without one it decodes naive, gets defaulted to UTC, and
     # 12:00 PDT (19:00 UTC) reads as 12:00 UTC -- EARLIER than the 18:00 GMT

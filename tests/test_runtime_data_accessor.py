@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tests for runtime.py -- which coordinator a scan service actually reaches.
 
-WHY THIS SUITE EXISTS: GH-707. Both of cyber_estate's scan services refused
-every call, on every configuration, estate-wide, from the KAN-344 merge until
+WHY THIS SUITE EXISTS. Both of cyber_estate's scan services refused
+every call, on every configuration, network-wide, from that merge until
 this suite was written. The merge turned `entry.runtime_data` from one
 coordinator into a dict of three; the service's lookup kept testing the
 container itself with `hasattr(runtime_data, "async_run_custom_scan")`, which a
@@ -85,7 +85,7 @@ def merged(scan):
 
 
 # --- the regression: a merged entry in local mode IS reachable --------------
-print("a local-mode merged entry is found (GH-707: it was not)")
+print("a local-mode merged entry is found (before the fix, it was not)")
 local = LocalLike()
 check("scan_coordinator_of digs the scan coordinator out of the dict",
       rt.scan_coordinator_of(Entry(merged(local))) is local, True)
@@ -142,7 +142,7 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
         src = open(path).read()
         # Strip comments and docstring prose: several files DOCUMENT the old
         # shape on purpose, and a file describing its own history must not
-        # match the check that says the pattern is gone (LAW section 4).
+        # match the check that says the pattern is gone.
         code = re.sub(r"#.*", "", src)
         code = re.sub(r'"""(?:.|\n)*?"""', "", code)
         if re.search(r'hasattr\(\s*[\w.]*runtime_data', code):
@@ -176,7 +176,7 @@ PASS, FAIL = _p, _f
 if detected == 3:
     PASS += 1
     print("  PASS  self-test: all three deliberate failures were detected")
-    print("        (the third IS the GH-707 bug: the pre-fix lookup, applied")
+    print("        (the third IS the bug: the pre-fix lookup, applied")
     print("         to a correctly configured local entry, returns nothing)")
 else:
     FAIL += 1

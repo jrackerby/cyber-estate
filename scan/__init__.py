@@ -1,4 +1,4 @@
-"""Scan subsystem setup -- KAN-344 merge of the standalone network_inventory
+"""Scan subsystem setup -- merge of the standalone network_inventory
 integration into cyber_estate.
 
 Local/agent branching, ConfigEntryNotReady handling, SSH prober wiring and
@@ -65,7 +65,7 @@ async def async_setup_scan(
     half-configured integration behind. That is a slightly wider blast
     radius than the standalone integration had (a scan-only outage now
     also retries feeds/CVE setup), accepted because a merged entry has one
-    setup lifecycle by construction -- see the merge note in KAN-344.
+    setup lifecycle by construction -- see the merge note above.
     """
     if entry.data.get(CONF_MODE) == MODE_LOCAL:
         coordinator = await _async_setup_local(hass, entry)
@@ -146,7 +146,7 @@ async def _async_setup_local(
         scanner=scanner,
         store=store,
         # RESOLVED HERE ONLY AS THE FALLBACK. The coordinator re-reads the
-        # entry on every use (GH-508) so an options edit reaches the next
+        # entry on every use so an options edit reaches the next
         # sweep without a reload; this is what it falls back to if the entry
         # cannot be read.
         settings=resolve_settings(entry.data, entry.options),

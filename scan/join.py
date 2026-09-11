@@ -44,7 +44,7 @@ class JoinResult:
 
     matched: int = 0
     unmatched: list[dict[str, Any]] = field(default_factory=list)
-    # KAN-294: a host Joel has looked at and decided is fine (a multi-NIC
+    # a host an operator has looked at and decided is fine (a multi-NIC
     # device whose ARP-visible interface differs from the one the registry
     # knows -- the UDM Pro is the case that found this) is a DIFFERENT fact
     # from a host that never appeared. Collapsing the two into "matched"
@@ -125,7 +125,7 @@ def join_hosts(
             "open_ports": host.get("port_list") or [],
         }
         if mac in acked:
-            # UNCONDITIONAL, NOT LIVENESS-GATED. KAN-294's whole point is that
+            # UNCONDITIONAL, NOT LIVENESS-GATED. The whole point is that
             # "we decided this one is fine" must never be silently subtracted
             # -- an acknowledgement is a standing human decision about a
             # device, not a live security read, so it stays listed whether or
@@ -133,9 +133,9 @@ def join_hosts(
             result.acknowledged.append(entry)
         elif is_up:
             result.unmatched.append(entry)
-        # NOT LIVE, NOT LISTED as unknown otherwise (Joel, 2026-09-05: "If the
+        # NOT LIVE, NOT LISTED as unknown otherwise ("If the
         # device isn't live on the network, it should not be shown as
-        # unknown"). `hosts` is the persisted inventory (KAN-294's
+        # unknown"). `hosts` is the persisted inventory (the
         # "unknown_hosts can reach zero" already relies on it never shrinking
         # on its own), so a device seen once and gone stays in it with
         # `status` no longer "up" -- without this gate it would sit in
@@ -161,10 +161,10 @@ def _self_test():
     hosts = {
         "1": {"mac": "AA:AA:AA:AA:AA:01", "ip": "10.0.0.1", "status": "up"},
         "2": {"mac": "AA:AA:AA:AA:AA:02", "ip": "10.0.0.2", "status": "up"},
-        # Seen before, not answering THIS scan (GH-537, Joel: "If the device
+        # Seen before, not answering THIS scan ("if the device
         # isn't live on the network, it should not be shown as unknown").
         "3": {"mac": "AA:AA:AA:AA:AA:03", "ip": "10.0.0.3", "status": "down"},
-        # Acknowledged AND currently offline -- must still show (KAN-294).
+        # Acknowledged AND currently offline -- must still show.
         "4": {"mac": "AA:AA:AA:AA:AA:04", "ip": "10.0.0.4", "status": "down"},
         # No MAC at all.
         "5": {"ip": "10.0.0.5", "status": "up"},
@@ -181,7 +181,7 @@ def _self_test():
     eq(r.unjoinable, 1, "host with no MAC counted separately, never as unknown")
     eq(r.hosts_up, 3, "hosts_up counts every up host regardless of join bucket")
 
-    # PROOF THIS HARNESS CAN FAIL (LAW section 4), by mutation:
+    # PROOF THIS HARNESS CAN FAIL, by mutation:
     #   `elif is_up:` replaced with unconditional `else:`
     #       -> "only the LIVE, unmatched..." fails, host 3 reappears
     # Re-run that way after changing this comparison; a green self-test on

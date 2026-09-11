@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for scan/join.py (formerly network_inventory, merged KAN-344).
+"""Tests for scan/join.py (formerly the standalone network_inventory).
 
 The join decides whether something on the network is accounted for. A wrong
 answer is either a missed intruder or an alert that cries wolf until it is
@@ -18,7 +18,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# KAN-344: network_inventory merged into cyber_estate's scan/ subpackage.
+# network_inventory merged into cyber_estate's scan/ subpackage.
 MODULE = os.path.join(HERE, "..", "scan", "join.py")
 
 spec = importlib.util.spec_from_file_location("network_inventory_join", MODULE)
@@ -106,7 +106,7 @@ r = join.join_hosts(
 check("no false match from unusable known MACs", r.matched, 0)
 check("host reported unknown", r.unknown_count, 1)
 
-print("\n--- KAN-294: acknowledgement is a third bucket, not a filter ---")
+print("\n--- acknowledgement is a third bucket, not a filter ---")
 hosts = {
     "a": host(mac="AA:BB:CC:DD:EE:01", ip="10.0.0.1"),  # known
     "b": host(mac="AA:BB:CC:DD:EE:02", ip="10.0.0.2"),  # acknowledged
@@ -162,12 +162,11 @@ check("hosts_up counts only up", r.hosts_up, 1)
 check("exposed_services sums ports", r.exposed_services, 2)
 check("hosts_with_port_data", r.hosts_with_port_data, 1)
 
-print("\n--- liveness gate on unknown hosts (GH-538) ---")
+print("\n--- liveness gate on unknown hosts ---")
 # THIS FIXTURE ALREADY HAD A DOWN HOST AND ASSERTED NOTHING ABOUT IT.
-# GH-538's whole behaviour -- Joel: "If the device isn't live on the network,
-# it should not be shown as unknown" -- was covered only by join.py's own
-# _self_test(), which nothing runs: cyber-estate's CI is hassfest + hacs, and
-# this file is what the HA repo's tools-tests.yml actually executes. So a
+# The whole behaviour -- "if the device isn't live on the network, it should
+# not be shown as unknown" -- was covered only by join.py's own _self_test(),
+# which nothing ran. So a
 # regression that put offline hosts back in the unknown list passed CI in both
 # repos. The rollup checks above cannot catch it: hosts_up, exposed_services
 # and hosts_with_port_data are all identical whether or not host "b" is
@@ -178,7 +177,7 @@ check("and the count agrees with the list", r.unknown_count, 1)
 
 # The other half of the ruling, and the half a naive "filter everything by
 # liveness" fix would break: an ACKNOWLEDGED host stays listed whether or not
-# it answered this scan. KAN-294 -- an acknowledgement is a standing human
+# it answered this scan. An acknowledgement is a standing human
 # decision about a device, never a live security read, and must never be
 # silently subtracted.
 r = join.join_hosts(

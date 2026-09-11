@@ -1,5 +1,5 @@
-# Declared BESIDE the suite, never listed in the workflow (jrackerby/HA LAW 15,
-# GH-670): a copy in CI goes stale the moment a test grows an import, and the
+# Declared BESIDE the suite, never listed in the workflow: a copy in CI goes
+# stale the moment a test grows an import, and the
 # failure it produces is a collection error that reads like a broken test rather
 # than a missing declaration.
 #

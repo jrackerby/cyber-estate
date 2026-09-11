@@ -1,7 +1,7 @@
 """nmap XML -> host records, and the merge that keeps them across scans.
 
 PURE, AND IMPORTS NOTHING FROM HOME ASSISTANT, for the same reason `join.py`
-does not: this is the layer that decides what the estate looks like, and logic
+does not: this is the layer that decides what the network looks like, and logic
 whose failure mode is "the inventory quietly forgets something" has to be
 runnable in a test without booting anything.
 

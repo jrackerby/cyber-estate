@@ -1,7 +1,7 @@
 """Constants and the feed registry for estate_feeds.
 
 REPLACES the HACS component custom-components/sensor.feedparser, which was
-killed 2026-08-08 (KAN-215). Three defects, none of them fixable in place
+killed 2026-08-08. Three defects, none of them fixable in place
 because the component is HACS-managed and an update reverts any edit:
 
   1. `update()` was SYNCHRONOUS and called `feedparser.parse(<url>)`, so the
@@ -33,7 +33,7 @@ completeness (4,024 and 4,033 files listed, 0 zero-reads):
                        severity 4 -- which is the point: a working sensor
                        publishing a real severity that nothing read.
                        `CDC Top Outbreak` was deleted from
-                       packages/global_threats.yaml in the same pass. Keeping
+                       its downstream consumer in the same pass. Keeping
                        the feed and dropping the consumer, or the reverse,
                        would have left a permanently-pinned sensor -- the
                        silent-constant defect of Current State 38.4.
@@ -43,7 +43,7 @@ Do not re-add either without a reader.
 
 from __future__ import annotations
 
-# KAN-344 MERGE: was DOMAIN under the standalone estate_feeds integration.
+# MERGE NOTE: was DOMAIN under the standalone estate_feeds integration.
 # Renamed because this subpackage no longer owns a manifest/config entry of
 # its own -- cyber_estate's top-level const.py now owns DOMAIN. Kept as
 # text for unique_id prefixes and device-registry identifiers, where the
@@ -98,7 +98,7 @@ FEEDS = [
         "url": "https://tools.cdc.gov/api/v2/resources/media/285676.rss",
         "date_format": "%a, %d %b %Y %H:%M:%S %Z",
         "inclusions": ["title", "link", "published", "summary"],
-        # Consumer: sensor.cdc_domestic_24h (packages/global_threats.yaml).
+        # Consumer: sensor.cdc_domestic_24h.
         # Uses e.get('published') / e.get('title') -- entries MUST be real
         # dicts, not objects, or .get() fails.
     },
@@ -108,9 +108,9 @@ FEEDS = [
         "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
         "date_format": "%a, %d %b %Y %H:%M:%S",
         "inclusions": ["title", "link", "published"],
-        # TWO consumers, not one: sensor.cisa_new_24h (packages/misc.yaml,
+        # TWO consumers, not one: sensor.cisa_new_24h and a second sensor
         # friendly name "CISA New 7d") AND sensor.cisa_estate_7d
-        # (packages/kev_estate.yaml). The second only surfaced in the
+        # downstream. The second only surfaced in the
         # tree-wide sweep -- it is not in Current State 7.2's package list.
     },
 ]

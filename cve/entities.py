@@ -6,7 +6,7 @@ FIVE SENSORS, AND THE SPLIT IS DELIBERATE.
                  drive a wall tile, and the only one that can legitimately
                  read 0 as good news.
     integrity    whether the answer above can be trusted at all. This is a
-                 DIFFERENT AUDIENCE, not a lower intensity (LAW 11): a
+                 DIFFERENT AUDIENCE, not a lower intensity: a
                  degraded integrity is an operator problem, and it must never
                  be collapsed into the actionable count.
     coverage     how many devices carry a version we do not check. The blind
@@ -16,7 +16,7 @@ FIVE SENSORS, AND THE SPLIT IS DELIBERATE.
     rollup       worst disposition across every finding.
 
 EVERY ENTITY OVERRIDES `available` TO TRUE. A monitor that disappears when its
-subject does cannot report the subject being down (LAW 11), and the failure
+subject does cannot report the subject being down, and the failure
 this integration exists to prevent is precisely a security surface that reads
 clean because it stopped working.
 
@@ -35,7 +35,7 @@ from . import cpe
 from .const import CVE_NS
 from .coordinator import NvdEstateCoordinator
 
-# KAN-344 MERGE: DOMAIN dropped, same reasoning as feeds/entities.py --
+# MERGE NOTE: DOMAIN dropped, same reasoning as feeds/entities.py --
 # the top-level sensor.py resolves the coordinator once for all three
 # subsystems (entry.runtime_data is now a dict of coordinators, not one),
 # so this module takes it as a parameter instead of doing its own lookup.
@@ -43,7 +43,7 @@ DOMAIN = CVE_NS  # unique_id / device-identifier prefix text only
 
 # Attribute budget. A findings list of any real length blows past HA's
 # recorder-friendly attribute size, so the detail is capped and the cap is
-# STATED in an attribute rather than applied silently (LAW 5).
+# STATED in an attribute rather than applied silently.
 MAX_DETAIL = 25
 
 
@@ -109,13 +109,13 @@ class NvdActionableSensor(_Base):
         affected = [f for f in findings if f.get("disposition") == cpe.AFFECTED]
         unknown = [f for f in findings
                    if f.get("disposition") == cpe.UNKNOWN_VERSION]
-        # GH-537: `f.get("due")` truthy only means CISA SET a due date, not
+        # `f.get("due")` truthy only means CISA SET a due date, not
         # that it has passed -- a KEV entry added yesterday with a two-week
         # window is not overdue. Was double-counted into "past due" on this
         # wall tile before the coordinator started computing the real
         # comparison in `overdue`.
         overdue = [f for f in affected if f.get("overdue")]
-        # GH-537 (Joel: "Can you add what the fixes are for the remaining CVE
+        # The request was "can you add what the fixes are for the remaining CVE
         # exposures?"). One entry per CVE among the findings actually driving
         # this tile, not per (cve, device) -- every device sharing a CVE
         # shares its fix. fixed_in/remediation are already honest-or-None per
@@ -145,7 +145,7 @@ class NvdActionableSensor(_Base):
             ],
             "fixes": fixes,
             "ransomware_linked": sum(1 for f in affected if f.get("ransomware")),
-            # GH-537: renamed from with_due_date, which counted a due date
+            # renamed from with_due_date, which counted a due date
             # EXISTING rather than having passed -- the old name was accurate
             # to what it measured, and what it measured was the wrong thing
             # for a tile the dashboard already labelled "past due".
@@ -187,7 +187,7 @@ class NvdIntegritySensor(_Base):
         data = self._data
         return {
             # Always present, never omitted when empty -- "nothing went wrong"
-            # and "we did not look" are different facts (LAW 11).
+            # and "we did not look" are different facts.
             "sources": data.get("sources") or {},
             "errors": data.get("errors") or [],
             "truncated": data.get("truncated") or [],
@@ -219,7 +219,7 @@ class NvdCoverageSensor(_Base):
             "accepted_devices": cov.get("accepted_devices"),
             "unmapped_sample": cov.get("unmapped_sample") or [],
             # The acceptance REASON travels with the count. A declined signal
-            # has to say so on the entity (LAW 11).
+            # has to say so on the entity.
             "accepted_reasons": sorted({a["reason"] for a in accepted}),
             # Registry entries that disagree with themselves about a version.
             # Deliberately NOT resolved by this integration -- see
@@ -228,7 +228,7 @@ class NvdCoverageSensor(_Base):
             "version_conflicts": cov.get("version_conflicts") or [],
             # Ghost registry entries this scan declined, with the reason. Also
             # always present: "nothing was declined" and "we did not check"
-            # must not read identically (LAW 11).
+            # must not read identically.
             "ownership_rejected": cov.get("ownership_rejected") or [],
             "generated": self._data.get("generated"),
         }
@@ -242,7 +242,7 @@ class NvdRecentAffectedSensor(_Base):
     kernel CVE fixed in a point release the Pis have not taken belongs here and
     does not belong on a wall tile next to "something you own is being
     exploited right now". This is the replacement for what
-    packages/network_security_cve.yaml's seven command_line sensors counted --
+    an earlier YAML package's seven command_line sensors counted --
     same question, but dispositioned against installed versions rather than
     counted by vendor name.
 

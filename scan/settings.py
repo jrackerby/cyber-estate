@@ -4,12 +4,12 @@ WHY THIS FILE EXISTS. `scan/const.py`'s header states the rule -- "every
 address, credential and interval is config-entry data rather than a constant"
 -- and the schedule broke it in both directions. In local mode the two sweep
 clocks and the SSH probe clock were module constants, so changing how often
-the estate is scanned meant editing this repo and restarting Home Assistant.
+the network is scanned meant editing this repo and restarting Home Assistant.
 In agent mode they are `OnCalendar=` lines in systemd timer units on the
 scanner host, which is worse: outside the config entry, outside this repo, and
 invisible to the integration that reports on their results.
 
-TARGETS AND SCHEDULE ARE READ THROUGH ONE FUNCTION, NEVER TWO PATHS (LAW 1).
+TARGETS AND SCHEDULE ARE READ THROUGH ONE FUNCTION, NEVER TWO PATHS.
 `entry.data` holds what setup collected; `entry.options` holds what the options
 flow has edited since. A config key read by two code paths can silently lose
 state -- a form defaulting from `data` while the coordinator scans from
@@ -27,7 +27,7 @@ submit and cannot store one; a value outside the bounds can only arrive from a
 hand-edited `.storage` file or from bounds that moved in a later version. In
 either case the tick has to keep running -- raising here would take the whole
 coordinator down over a number, and a monitor that vanishes because its own
-setting is odd is the failure LAW 11's never-raise contract exists to refuse.
+setting is odd is the failure the never-raise contract exists to refuse.
 """
 
 from __future__ import annotations

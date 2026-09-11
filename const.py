@@ -1,6 +1,6 @@
 """Top-level constants for cyber_estate.
 
-KAN-344. Merges three previously-standalone integrations -- estate_feeds
+Merges three previously-standalone integrations -- estate_feeds
 (CISA/CDC RSS), nvd_estate (NVD CVE + CISA KEV matching), network_inventory
 (nmap scanning) -- under one manifest, one config entry, one domain. Each
 subsystem's own business logic (feed parsing, CPE matching, nmap invocation,

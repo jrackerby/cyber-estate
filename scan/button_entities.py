@@ -42,7 +42,7 @@ def setup_scan_buttons(
     coordinator,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up one scan button per profile. KAN-344 MERGE: coordinator now
+    """Set up one scan button per profile. MERGE NOTE: coordinator now
     passed in, see entities.py's setup_scan_sensors docstring."""
     async_add_entities(
         ScanButton(

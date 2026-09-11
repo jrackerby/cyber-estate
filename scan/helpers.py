@@ -13,7 +13,7 @@ from homeassistant.helpers.event import async_call_later
 # state from BEFORE the action took effect and the entity snaps back to its old
 # value -- which looks exactly like the command having failed.
 #
-# Measured on this estate: the marker is consumed in under a second. Three
+# Measured on this network: the marker is consumed in under a second. Three
 # seconds clears that with room to spare while staying well inside the window
 # where a user is still looking at the control they pressed.
 FOLLOWUP_DELAY = 3

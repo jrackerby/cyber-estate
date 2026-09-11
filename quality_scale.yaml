@@ -153,7 +153,7 @@ rules:
     status: todo
     comment: >-
       `entry.runtime_data` is used and has exactly one accessor (`runtime.py`,
-      after GH-707), but it holds a plain `dict` of three coordinators and there
+      after that fix), but it holds a plain `dict` of three coordinators and there
       is no `type CyberEstateConfigEntry = ConfigEntry[CyberEstateData]` alias, so
       nothing is type-checked at the boundary. A frozen dataclass plus the
       subscripted alias would close it without changing the one-door shape.
