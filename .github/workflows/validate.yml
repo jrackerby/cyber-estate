@@ -1,8 +1,8 @@
 name: validate
 
-# Every one of these repos shipped with no CI at all (GH-483): a change landed,
-# jrackerby/HA bumped the submodule pointer, and nothing between the edit and
-# the live estate ever validated the manifest.
+# This repository shipped without CI: a change landed and nothing between the
+# edit and a running Home Assistant ever validated the manifest. These jobs are
+# that missing gate.
 
 on:
   push:
@@ -40,10 +40,10 @@ jobs:
       # WHY THIS STAGING STEP EXISTS. home-assistant/actions/hassfest takes no
       # path input -- it runs the hassfest image against ${{ github.workspace }}
       # and scans custom_components/*. This repo keeps its integration at the
-      # ROOT (hacs.json content_in_root: true) because jrackerby/HA submodules
-      # it AS custom_components/${{ env.DOMAIN }}. Handed the repo as-is,
-      # hassfest finds zero integrations. So build the HA layout here rather
-      # than restructure the repo and break the submodule path.
+      # ROOT (hacs.json content_in_root: true), which is the layout HACS
+      # installs from. Handed the repo as-is, hassfest finds zero integrations.
+      # So build the HA layout here rather than restructure the repo and break
+      # the way HACS installs it.
       - name: stage the custom_components layout hassfest scans
         run: |
           mkdir -p "custom_components/$DOMAIN"
@@ -63,17 +63,16 @@ jobs:
       - uses: home-assistant/actions/hassfest@master
 
   tests:
-    # This repo had NO suite at all until now (jrackerby/HA#672): hassfest
+    # This repo had NO suite at all until now: hassfest
     # validates the manifest and never imports the code, and the hacs job below
     # is a VOID while the repo is private, so a change could rename a symbol or
-    # break the scan resolver and reach the live estate behind a fully green
+    # break the scan resolver and reach a running instance behind a fully green
     # required-check set.
     #
-    # These six suites came from jrackerby/HA's tools/ (#668). Their SUBJECT is
-    # this component's source -- they load scan/ and feeds/ modules by path --
-    # so they had to move with it the moment HACS, rather than a submodule,
-    # started delivering this component. Left there they simply failed to
-    # import, which is what caught the omission.
+    # These six suites live here, beside the component, because their SUBJECT
+    # is this component's source -- they load scan/ and feeds/ modules by path.
+    # A suite kept anywhere else simply fails to import once the component
+    # moves, which is exactly how the omission was caught.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -85,7 +84,7 @@ jobs:
       # From tests/requirements.txt, never a list written here -- a second copy
       # goes stale the moment a test grows an import, and the resulting
       # collection error reads like a broken test rather than a missing
-      # declaration (LAW 15, the GH-670 worked example).
+      # declaration.
       - name: install what the suite declares it needs
         run: |
           set -euo pipefail
@@ -122,7 +121,6 @@ jobs:
       # Reporting it as VOID rather than green keeps the distinction that
       # matters -- the check did not run, so nothing was proven either way. It
       # starts running by itself the moment the repository is made public.
-      # jrackerby/HA#483 carries that decision.
       - name: VOID -- HACS validation cannot run against a private repository
         if: ${{ github.event.repository.private }}
         run: |
@@ -130,7 +128,7 @@ jobs:
           echo "HACS reads hacs.json and manifest.json from raw.githubusercontent.com with NO"
           echo "Authorization header, in CI and in a live install alike, so a private repository"
           echo "404s. This step is a VOID, not a pass: nothing about HACS compatibility was"
-          echo "verified here. See jrackerby/HA#483."
+          echo "verified here."
 
       - uses: hacs/action@main
         if: ${{ !github.event.repository.private }}

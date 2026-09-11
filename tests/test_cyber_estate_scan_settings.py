@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for cyber_estate's scan scope/schedule resolver (GH-508).
+"""Tests for cyber_estate's scan scope/schedule resolver.
 
 THREE SILENT FAILURE MODES ARE COVERED HERE.
 
@@ -22,7 +22,7 @@ step or key renders as a raw slug, which reads as a bug in the integration
 rather than a missing string, so the flow's step ids and field names are JOINED
 against strings.json rather than eyeballed.
 
-THE SELF-TEST AT THE END PROVES THESE CHECKS CAN FAIL (LAW section 4).
+THE SELF-TEST AT THE END PROVES THESE CHECKS CAN FAIL.
 
 Run: python3 tests/test_cyber_estate_scan_settings.py
 """

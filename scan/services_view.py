@@ -2,7 +2,7 @@
 
 THE QUESTION THIS FILE ANSWERS is "show me every device running ssh", and the
 whole difficulty is in the devices it must NOT answer for. Of 78 tracked hosts
-on this estate, 41 carry port data; the nightly scan only port-scans what is
+on this network, 41 carry port data; the nightly scan only port-scans what is
 awake at 03:15, so phones and tablets are systematically never looked at. A
 two-state sensor would render all 37 of those as "not running ssh", which is
 not a cautious answer -- it is a wrong one, delivered confidently, about the
@@ -11,7 +11,7 @@ devices most likely to be interesting.
 SO EVERY READING IS THREE-STATE. `open` and `closed` are observations;
 `never_scanned` is the absence of one. They are different kinds of fact and
 the sensor must never collapse them, exactly as `absent` and `unreachable` are
-kept apart elsewhere in this estate.
+kept apart elsewhere in this network.
 
 SERVICES ARE KEYED BY NAME, NOT BY PORT. A host serving http on 80 and 8080 is
 one answer to "what runs http here", not two, and the ports travel as an

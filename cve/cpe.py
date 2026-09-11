@@ -2,15 +2,15 @@
 
 This module decides whether an installed version is inside an NVD affected
 range. Its failure mode is "tells you that you are patched when you are not",
-which is the same class as household_state's resolver telling someone the wrong
-thing under stress — so it follows the same rule LAW section 11 sets for that
-resolver: it imports nothing from homeassistant, it is a set of pure functions,
-and it can be tested without a running Home Assistant.
+which is the same class as a household directive resolver telling someone the
+wrong thing under stress — so it follows the same rule such a resolver does: it
+imports nothing from homeassistant, it is a set of pure functions, and it can
+be tested without a running Home Assistant.
 
 Run the self-test with:  python3 cpe.py
 
 THE CENTRAL RULE, AND IT IS ASYMMETRIC. `patched` is a claim that licenses
-inaction, so it gets the stricter standard (LAW section 1). Every path that
+inaction, so it gets the stricter standard. Every path that
 cannot establish a confident answer returns UNKNOWN_VERSION, never PATCHED.
 A version we cannot parse, a range we cannot parse, an asset with no version
 read — all of those are UNKNOWN_VERSION. Only an installed version that
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-# Dispositions. These are DISTINCT VALUES AT THE SOURCE, per LAW section 11 --
+# Dispositions. These are DISTINCT VALUES AT THE SOURCE, by contract --
 # "ok at zero and could not read must be different values". A consumer must be
 # able to render "we could not read this" without inventing a severity, and
 # must never be able to collapse it into "not affected".
@@ -61,7 +61,7 @@ def parse_version(raw):
     s = str(raw).strip()
     if not s:
         return None
-    # Firmware strings in this estate arrive as "5.1.27.33981" from the UniFi
+    # Firmware strings in this network arrive as "5.1.27.33981" from the UniFi
     # device registry and "6.18.39+rpt-rpi-v8" from uname. kiosk_pi also packs
     # two versions into one sw_version field ("<uname> / Chromium <v>"), which
     # is why the caller splits before it gets here rather than this guessing.
@@ -136,7 +136,7 @@ def disposition(version, nodes):
     """Disposition an installed version against a CVE's cpeMatch nodes.
 
     `nodes` are ONLY the nodes whose CPE product matched an asset we own --
-    filtering by product is the caller's job, because that is estate knowledge
+    filtering by product is the caller's job, because that is inventory knowledge
     and this module holds none.
 
     AFFECTED wins over everything: one node placing us in range is enough.
@@ -267,12 +267,12 @@ def classify_device(manufacturer, model, sw_version,
     not understand and will never update -- `unifi` holding a frozen Chromium
     build for a Raspberry Pi, for instance. Ownership is a signal Home
     Assistant maintains and no integration can forge another's domain, which is
-    what LAW section 10 asks to discriminate on. Matching on the SHAPE of the
+    what the rule asks to discriminate on. Matching on the SHAPE of the
     record instead (empty `identifiers`) is wrong and dangerous: the UDM Pro
     has empty identifiers too.
 
     A rejected device returns `unmapped` WITH A REASON rather than vanishing.
-    A scan that silently shrinks its own denominator is not an audit (LAW 5).
+    A scan that silently shrinks its own denominator is not an audit.
     """
     mfr = (manufacturer or "").strip().lower()
     mdl = (model or "").strip().lower()
@@ -286,7 +286,7 @@ def classify_device(manufacturer, model, sw_version,
             # An accepted rule MAY declare products. When it does, the caller
             # can still match a CVE to this device and disposition it ACCEPTED
             # rather than UNMONITORED -- "we decided" and "nothing here carries
-            # this" are different facts (LAW section 11).
+            # this" are different facts.
             products = []
             for vendor, product, extract in rule.get("products") or []:
                 raw = str(sw_version)
@@ -344,10 +344,10 @@ def nodes_for(cve_obj, vendor, product):
 
     Ignoring the flag made this function return the linux_kernel node, which
     carries no bounds, which in_range() correctly reads as "every version
-    affected" -- and the estate's Pi kernels were reported AFFECTED by a Chrome
+    affected" -- and the network's Pi kernels were reported AFFECTED by a Chrome
     bug. Caught by tools/nvd_probe.py --dryrun on 2026-08-11, before deploy.
     `vulnerable` is a structural signal NVD must keep true, which is what
-    LAW section 10 says to discriminate on.
+    the rule says to discriminate on.
 
     NVD states an affected version in one of two ways and this handles both:
     range bounds on the match object, OR the version baked into the CPE string
@@ -387,7 +387,7 @@ def rollup(dispositions):
     """Worst disposition in a set. Empty -> PATCHED is WRONG, so: UNMONITORED.
 
     An empty set means nothing was evaluated, and "nothing was evaluated" must
-    not render as "all clear" (LAW section 11 -- an unreadable source can never
+    not render as "all clear" -- an unreadable source can never
     contribute 0).
     """
     if not dispositions:
@@ -399,7 +399,7 @@ def rollup(dispositions):
 
 
 # ---------------------------------------------------------------------------
-# SELF-TEST. LAW section 4: every assertion set needs a self-test proving it
+# SELF-TEST. Every assertion set needs a self-test proving it
 # CAN fail. The negative cases below are that proof -- they assert that this
 # module REFUSES to say `patched`, which is the only failure that matters.
 # ---------------------------------------------------------------------------
@@ -426,7 +426,7 @@ def _self_test():
     eq(_cmp((5, 1, 27), (5, 1, 12)), 1, "5.1.27 > 5.1.12")
     eq(_cmp((5, 1, 2), (5, 1, 12)), -1, "5.1.2 < 5.1.12 (not string order)")
 
-    # --- the three real estate cases, from live data 2026-08-11 ---
+    # --- the three real-world cases, from live data 2026-08-11 ---
     udm = parse_version("5.1.27.33981")
     unifi_node = {"versionEndExcluding": "5.1.12"}
     eq(disposition(udm, [unifi_node]), PATCHED, "UDM 5.1.27 vs <5.1.12")
@@ -463,7 +463,7 @@ def _self_test():
        UNKNOWN_VERSION, "one bad node poisons a clean one -> unknown")
     eq(in_range(udm, {}), True, "no bounds at all -> all versions affected")
 
-    # --- fixed_in: the honest fix-version answer (GH-537) ---
+    # --- fixed_in: the honest fix-version answer ---
     eq(fixed_in([unifi_node]), "5.1.12", "single versionEndExcluding node")
     eq(fixed_in(kernel_nodes), "4.9.301",
        "lowest versionEndExcluding wins across nodes")
@@ -537,7 +537,7 @@ def _self_test():
         "Sonos", "Beam", "18.6", kiosk_rules, accept_rules)
     eq(kind, "unmapped", "unknown vendor -> unmapped, not silently dropped")
 
-    # --- OWNERSHIP: the ghost-device guard (KAN-286) ------------------------
+    # --- OWNERSHIP: the ghost-device guard ------------------------
     # A registry split leaves a fragment owned by an integration that inherited
     # a version string it does not understand and will never update. The
     # fragment must not become an asset; the real device must.
@@ -625,7 +625,7 @@ def _self_test():
     eq(severity_of(None), ("UNRATED", None), "None -> UNRATED")
 
     # --- REGRESSION: the platform-CPE false positive (CVE-2026-11645) -------
-    # Verbatim shape of the real configuration, which reported the estate's Pi
+    # Verbatim shape of the real configuration, which reported the network's Pi
     # kernels AFFECTED by a Chromium V8 bug until `vulnerable` was honoured.
     chrome_on_linux = {"configurations": [{"operator": "AND", "nodes": [
         {"operator": "OR", "cpeMatch": [
@@ -674,7 +674,7 @@ def _self_test():
     eq(disposition(parse_version("99.0"), nodes), PATCHED,
        "exact-version CPE must not read as all-versions")
 
-    # PROOF THIS HARNESS CAN FAIL (LAW section 4), by mutation rather than by
+    # PROOF THIS HARNESS CAN FAIL, by mutation rather than by
     # a self-referential check. Verified 2026-08-11 against two mutants:
     #
     #   versionEndExcluding treated as inclusive (`c <= 0`)

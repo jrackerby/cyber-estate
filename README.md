@@ -1,19 +1,43 @@
 # Cyber Monitor
 
-Security posture for your network, as one Home Assistant config entry.
+Answers one question in Home Assistant: **is anything on this network a problem
+right now** — an unfamiliar device, a known vulnerability in something you are
+running, or a published advisory that applies to you.
 
-It merges what used to be three independent integrations — advisory feeds,
-CVE lookups and network scanning — into one. That merge is the reason the
-setup path behaves the way it does:
+It does that by joining three things that are normally separate:
+
+1. **What is actually on the network.** Scheduled `nmap` sweeps of the subnets
+   you name, building an inventory that remembers when each device was
+   `first_seen`. Anything new and unacknowledged is an unknown host.
+2. **What is known to be wrong with it.** NVD (CVE) lookups against that
+   inventory, so the vulnerability data is about the services actually
+   answering on your network rather than a generic feed.
+3. **What is being published.** Security advisory and alert feeds, parsed
+   offline from bytes this integration fetched itself.
+
+Each part is useful alone; the point of having them in one component is step 2,
+which needs step 1's inventory to mean anything.
+
+> **The domain is `cyber_estate`, not `cyber_monitor`.** The repository and the
+> component do not share a name, and the domain is the one that cannot change:
+> Home Assistant dispatches a config entry on its domain, so renaming one is an
+> offline registry rewrite that orphans every entity id rather than a rename.
+> Actions, entity ids and the install path therefore all read `cyber_estate`.
+
+## One entry, three coordinators
+
+The three halves share a single config entry, and that has a consequence worth
+knowing before you file a bug:
 
 - **feeds** and **cve** coordinators *never* raise. An unreadable source is a
-  disposition the entities report, not a setup failure.
-- **scan** *can* raise `ConfigEntryNotReady` — it needs the `nmap` binary.
+  disposition the entities report, not a setup failure — a monitor that
+  disappears with its subject cannot report the subject down.
+- **scan** *can* raise `ConfigEntryNotReady`, because it needs the `nmap`
+  binary present.
 
-Because all three now share a single config entry, a scan failure retries the
-**whole** entry, including the two halves that always succeed. That is a real
-behaviour change from three separate integrations and was accepted knowingly:
-one entry has one setup lifecycle by construction.
+So a scan failure retries the **whole** entry, including the two halves that
+would have succeeded. One entry has one setup lifecycle by construction; if
+`nmap` is missing, expect the feed and CVE entities to go with it.
 
 ## What it creates
 
@@ -21,9 +45,9 @@ Platforms: `button`, `sensor`, `switch`.
 
 - **feeds** — advisory/alert feeds, timezone-correct. `feeds/feedparse.py`
   resolves feed timezone *abbreviations* from an explicit table rather than by
-  matching the host's local zone, which is what dateutil does by default and
-  which silently mis-ordered entries on any host outside the feed's zone.
-- **cve** — NVD lookups against the inventory it builds.
+  matching the host's local zone, which is what `dateutil` does by default and
+  which silently mis-orders entries on any host outside the feed's zone.
+- **cve** — NVD lookups against the inventory the scanner builds.
 - **scan** — nmap sweeps, unknown-host detection, MAC acknowledgement.
 
 ## Configuration

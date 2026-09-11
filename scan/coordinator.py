@@ -19,7 +19,7 @@ holds the nmap process is not a difference the entities should be able to see.
 
 IN LOCAL MODE THE COORDINATOR TICK IS NOT A SCAN. It fires every few minutes
 and asks whether either sweep is DUE. Scanning on every tick would put a
-continuous SYN flood on the estate, and tying the expensive service scan to the
+continuous SYN flood on the network, and tying the expensive service scan to the
 cheap liveness sweep is the exact conflation that erased a night of service
 data on the old scanner.
 """
@@ -142,7 +142,7 @@ class InventoryView:
 
         Published as a first-class number rather than derived by subtraction,
         because it is the size of this instrument's blind spot and an operator
-        should not have to compute it to find out how much of the estate the
+        should not have to compute it to find out how much of the network the
         service answers do not cover.
         """
         return sum(
@@ -167,7 +167,7 @@ class NetworkInventoryCoordinator(DataUpdateCoordinator[InventoryView]):
     def _known_macs(self) -> list[str]:
         """Every MAC the device registry holds, EXCEPT the ones we created.
 
-        A PATTERN VALIDATED AGAINST ITSELF IS NOT VALIDATED (LAW 9). This
+        A PATTERN VALIDATED AGAINST ITSELF IS NOT VALIDATED. This
         integration creates a device per scanned endpoint, carrying that
         endpoint's MAC as a network connection -- so a naive read of the
         registry finds every host we have ever scanned already "known", by us,
@@ -175,7 +175,7 @@ class NetworkInventoryCoordinator(DataUpdateCoordinator[InventoryView]):
         then reports a clean network precisely because it has been running a
         while, which is the failure it exists to prevent.
 
-        This is KAN-294's circularity arriving from a second source: there it
+        This is the acknowledgement circularity arriving from a second source: there it
         was the scanner's own MQTT discovery, here it is our own device
         records. The rule is the same -- a device known ONLY to us is not
         corroboration. A device we share with another integration is, so the
@@ -188,7 +188,7 @@ class NetworkInventoryCoordinator(DataUpdateCoordinator[InventoryView]):
         ours = self.config_entry_id
         return [
             conn_value
-            # ITERATED, NOT .values() (GH-569). `device_registry.devices`
+            # ITERATED, NOT .values(). `device_registry.devices`
             # as a MAPPING is deprecated and stops working in HA 2027.9;
             # iterating the container yields DeviceEntry directly, which is
             # the supported form. Same objects, same order, no lookup.
@@ -199,9 +199,9 @@ class NetworkInventoryCoordinator(DataUpdateCoordinator[InventoryView]):
         ]
 
     def _acknowledged_macs(self) -> list[str]:
-        """MACs Joel has explicitly decided are fine, from the options flow.
+        """MACs an operator has explicitly decided are fine, from the options flow.
 
-        KAN-294's first defect: `unknown_hosts` had no way to reach zero for
+        The first defect: `unknown_hosts` had no way to reach zero for
         a real, explained case (a multi-NIC device whose ARP-visible MAC
         differs from the one the device registry holds -- the UDM Pro).
         Read live off the config entry on every refresh rather than cached
@@ -335,7 +335,7 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         whether the change is live yet. Everything that needs scope or
         schedule comes through here and through `resolve_settings` beneath it,
         so the form's defaults and the sweep's targets cannot disagree
-        (LAW 1: one accessor).
+        (one accessor, never two paths).
         """
         entry = None
         if self.config_entry_id:
@@ -360,7 +360,7 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         THE CLOCKS WERE IN MEMORY ONLY, so every Home Assistant restart made
         both sweeps immediately due and fired a full service scan of the whole
         subnet. Measured: a restart put a `-sV` sweep on the wire within
-        seconds, and a day with several restarts would scan the estate several
+        seconds, and a day with several restarts would scan the network several
         times over for no new information.
 
         The store already records when each kind of scan last landed, so the
@@ -532,7 +532,7 @@ class LocalCoordinator(NetworkInventoryCoordinator):
         except ScanError as err:
             # RECORDED ON THE VIEW, not only in the log. Without the script
             # engine every service scan fails identically and forever, and a
-            # log line nobody reads would leave the estate looking like it
+            # log line nobody reads would leave the network looking like it
             # simply runs no services.
             self._service_error = str(err)
             _LOGGER.warning("service scan failed: %s", err)

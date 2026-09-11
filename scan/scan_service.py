@@ -1,6 +1,6 @@
 """The custom-scan service: plain-English options, no remembered flags.
 
-WHY A SERVICE AND NOT A SCRIPT PLUS HELPERS. LAW section 7 rules that a script
+WHY A SERVICE AND NOT A SCRIPT PLUS HELPERS. The rule is that a script
 reaching glass through a generic runner is banned, and that an affordance
 belongs to the card that owns the concept. A service with named boolean fields
 keeps the option vocabulary in ONE place: Home Assistant renders each field
@@ -75,7 +75,7 @@ def _local_coordinators(hass: HomeAssistant) -> list[Any]:
 
     THE LOOKUP ITSELF LIVES IN `..runtime` AND IS TESTED THERE. This function
     is the HA-shaped half -- asking the registry which entries exist -- and
-    nothing more. GH-707: the version that inlined the lookup read
+    nothing more. The version that inlined the lookup read
     `entry.runtime_data` as if it were still one coordinator, so it matched
     nothing on any configuration and both services refused every call.
     """
@@ -87,8 +87,8 @@ def _one_coordinator(hass: HomeAssistant):
     if not coordinators:
         raise HomeAssistantError(
             # NAMES THE DOMAIN THAT CAN ACTUALLY EXIST. This message used to
-            # say "network_inventory", a domain retired at the KAN-344 merge,
-            # and GH-707 was read as a missing config entry for exactly that
+            # say "network_inventory", a domain retired at that merge,
+            # and the failure was read as a missing config entry for exactly that
             # long -- an entry under that name cannot be created, so it can
             # never be found missing. A message that sends the reader
             # somewhere unreachable is worse than a bare failure.

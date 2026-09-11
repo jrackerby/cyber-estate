@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GH-477: format_date's stored identity must survive dateutil's deprecation.
+"""format_date's stored identity must survive dateutil's deprecation.
 
 WHAT THIS IS ABOUT. `feeds/feedparse.py`'s `format_date` produces a string that
 becomes part of `entry_key` for feeds carrying neither guid nor link, and
@@ -37,7 +37,7 @@ from datetime import timedelta
 
 # Pinned before anything parses a date: the whole point is that the result must
 # not depend on the host's zone, and a UTC process is the case that used to be
-# wrong (jrackerby/HA#472 measured it on a UTC runner).
+# wrong (measured on a UTC runner).
 os.environ["TZ"] = "UTC"
 try:
     time.tzset()
@@ -45,16 +45,12 @@ except AttributeError:  # non-POSIX
     pass
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-CANDIDATES = [
-    REPO / "feeds" / "feedparse.py",
-    pathlib.Path.home() / "repos" / "cyber-estate" / "feeds" / "feedparse.py",
-]
-
-MODULE_PATH = next((p for p in CANDIDATES if p.is_file()), None)
-if MODULE_PATH is None:
-    print("SKIP: feedparse.py not found in either the submodule or ~/repos/cyber-estate")
-    print("      (feeds/feedparse.py not found in this repo)")
-    raise SystemExit(0)
+MODULE_PATH = REPO / "feeds" / "feedparse.py"
+if not MODULE_PATH.is_file():
+    # Not a skip: feedparse.py lives in this repo, so its absence is a broken
+    # checkout, and a suite that skips itself over that is a vacuous green.
+    print(f"FAIL: {MODULE_PATH} not found -- this repo owns feeds/feedparse.py")
+    raise SystemExit(1)
 
 # Loaded BY FILE PATH, not through the package: importing cyber_estate would
 # pull in __init__.py and its homeassistant imports, which this module's own
@@ -115,11 +111,11 @@ def bad(msg):
 
 
 def legacy(value: str) -> str:
-    """The form that shipped before GH-477 -- the string acks were stored with."""
+    """The form that shipped first -- the string acks were stored with."""
     return P.parse(value).strftime(FMT)
 
 
-print(f"GH-477: format_date identity  (module: {MODULE_PATH})")
+print(f"format_date identity  (module: {MODULE_PATH})")
 print(f"process TZ={os.environ['TZ']} tzname={time.tzname}\n")
 
 # 1. Byte-identical to the legacy form, today.
@@ -186,7 +182,7 @@ if legacy_raised > 0:
 else:
     bad("the legacy form did not raise -- case 3 proved nothing")
 
-# 5. The ordering path keeps its own zone resolution (GH-478), unchanged here.
+# 5. The ordering path keeps its own zone resolution, unchanged here.
 entries = [
     {"id": "later-instant", "published": "Thu, 06 Aug 2026 15:00:00 EDT"},   # 19:00Z
     {"id": "earlier", "published": "Thu, 06 Aug 2026 18:00:00 GMT"},          # 18:00Z

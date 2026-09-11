@@ -1,4 +1,4 @@
-"""The cyber_estate integration -- KAN-344 merge of estate_feeds, nvd_estate
+"""The cyber_estate integration -- merge of estate_feeds, nvd_estate
 and network_inventory under one config entry. See const.py for the full
 merge rationale.
 
@@ -53,7 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # THE ONLY WRITE. Every read of this dict goes through runtime.py --
     # KEY_SCAN is the same constant the accessor there indexes with, so a
-    # rename cannot land on this line and miss a reader (GH-707).
+    # rename cannot land on this line and miss a reader.
     entry.runtime_data = {
         "feeds": feeds_coordinator,
         "cve": cve_coordinator,
@@ -62,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # A SAVED OPTION IS ACTED ON AT ONCE, AND STILL WITHOUT A RELOAD.
-    # KAN-294 added this for acknowledged MACs; GH-508 put scan scope and the
+    # Acknowledged MACs came first; scan scope and the
     # sweep schedule through the same door. Reloading would re-run agent/local
     # setup (binary lookup, agent handshake) and, worse, restart the feeds and
     # CVE coordinators, for a change that touched none of them -- while the

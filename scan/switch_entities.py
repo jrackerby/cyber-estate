@@ -34,7 +34,7 @@ def setup_scan_switches(
     coordinator,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up one schedule switch per profile. KAN-344 MERGE: coordinator
+    """Set up one schedule switch per profile. MERGE NOTE: coordinator
     now passed in, see entities.py's setup_scan_sensors docstring."""
     async_add_entities(
         ScheduleSwitch(

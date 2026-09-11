@@ -8,11 +8,11 @@ WHAT THIS DOES, IN ORDER
        (`owner`), which keeps a ghost registry fragment from supplying a frozen
        version nothing runs. Devices with a sw_version and no rule -- or one
        whose ownership assertion failed -- are counted as UNMAPPED and reported
-       WITH THE REASON. A scan that keys on one pattern is not an audit (LAW 5),
+       WITH THE REASON. A scan that keys on one pattern is not an audit,
        so this one states what it misses instead of quietly shrinking its own
        denominator.
     2. Fetch the CISA KEV catalog and keep entries whose vendor/product/name
-       matches an estate keyword. KEV is the high-signal source: every entry is
+       matches an inventory keyword. KEV is the high-signal source: every entry is
        confirmed actively exploited.
     3. Look each surviving KEV CVE up in NVD to get its cpeMatch ranges.
     4. Disposition every (cve, asset) pair through cpe.disposition().
@@ -21,17 +21,17 @@ SCOPE OF THIS VERSION, STATED SO THE HEADER STAYS TRUE. Two finding sets, kept
 apart on purpose. `actionable` is KEV-DRIVEN ONLY -- actively-exploited
 vulnerabilities joined to installed versions. `window_by_target` is the
 recent-window sweep per tracked product, in _sweep_window below, which replaced
-packages/network_security_cve.yaml's seven command_line sensors; that package
+an earlier YAML package's seven command_line sensors; that package
 is retired and gone from the tree, and the API key it inlined went with it.
 
-THE COORDINATOR NEVER RAISES UpdateFailed (LAW 11). Raising takes every entity
+THE COORDINATOR NEVER RAISES UpdateFailed. Raising takes every entity
 unavailable, which lets a dead layer read green -- exactly backwards for a
 monitor. It always returns a dict, and the dict says which sources answered.
 
 FAILURE IS NOT ZERO, AND IT IS NOT `patched` EITHER. If NVD cannot be reached,
 findings are not emitted as clean; `sources` records the failure, integrity
 goes degraded, and the actionable count is None rather than 0. An unreadable
-source can never contribute 0 (LAW 11).
+source can never contribute 0.
 
 AUTH FAILURE DOES NOT BLOW UP THE ENTITIES. A 401/403 from NVD starts HA's
 reauth flow so the key can be replaced from the UI -- which is the whole point
@@ -74,19 +74,19 @@ _LOGGER = logging.getLogger(__name__)
 # response-size limit, not a judgement about relevance -- linux_kernel alone
 # carries 18832 CVEs all-time and several hundred in any 90-day window.
 # WHATEVER IS DROPPED IS REPORTED in `truncated`, because a silent cap reads as
-# "covered everything" when it did not (LAW 5).
+# "covered everything" when it did not.
 MAX_PER_PRODUCT = 200
 
 
 def _is_overdue(due_str, today):
     """Has CISA's KEV due date actually passed, or merely been set?
 
-    GH-537 (found while explaining a critical rollup to Joel): entities.py
+    entities.py
     used to count `f.get("due")` truthy as "overdue" -- that only checks a
     due date EXISTS, not that today is past it, so a KEV entry added
     yesterday with a two-week remediation window read as already overdue.
     A date we cannot parse is not overdue either -- guessing urgency from bad
-    data is the same false-alarm shape LAW 5 exists to prevent.
+    data is the same false-alarm shape the rule exists to prevent.
     """
     if not due_str:
         return False
@@ -97,7 +97,7 @@ def _is_overdue(due_str, today):
 
 
 class NvdEstateCoordinator(DataUpdateCoordinator):
-    """Joins what the estate runs to what NVD says is broken."""
+    """Joins what the network runs to what NVD says is broken."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
@@ -150,7 +150,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
         reg = dr.async_get(self.hass)
         assets, accepted, unmapped = [], [], []
 
-        # ITERATED, NOT .values() (GH-569). Deprecated mapping access on
+        # ITERATED, NOT .values(). Deprecated mapping access on
         # device_registry.devices; breaks in HA 2027.9. Iterating yields
         # DeviceEntry directly. This site is NOT the one the ticket
         # named -- the log reported only scan/coordinator.py, and a fix
@@ -194,7 +194,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
             else:
                 # `payload` carries a reason when the device matched a rule but
                 # failed its ownership assertion. A rejected device is REPORTED,
-                # never dropped (LAW 5).
+                # never dropped.
                 row = {
                     "device": name,
                     "manufacturer": device.manufacturer or "?",
@@ -226,7 +226,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
         STILL RESOLVES NOTHING, deliberately. Picking the higher version guesses
         in the UNSAFE direction -- it assumes the best case and hides a stale
         host. Picking the lower invents work. Entity count remains a heuristic
-        and is still not used. What LAW 10 asks for -- a signal the integration
+        and is still not used. What the rule asks for -- a signal the integration
         must keep true -- is the OWNING CONFIG-ENTRY DOMAIN, and that is applied
         upstream in classify_device rather than as a tie-breaker here.
         """
@@ -289,7 +289,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
         what makes the count trustworthy. A product-only query returns
         everything ever published against the product: linux_kernel came back
         1798 for a 90-day window, chrome 1734. Capped at 200 those are 11%
-        samples, and LAW 5 is explicit that an ABSENCE from a truncated sweep
+        samples, and the rule is explicit that an ABSENCE from a truncated sweep
         is void. Measured 2026-08-11, that void was hiding real findings: the
         product-only chrome sample reported 200/200 patched, while the
         version-specific query for the installed 151.0.7922.71 returns 406
@@ -301,8 +301,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
 
         NVD's matching is the coarse filter; cpe.py remains the authority. The
         caller cross-checks a sample against our own comparator, because a
-        count taken on trust from the thing being measured is not evidence
-        (LAW 9).
+        count taken on trust from the thing being measured is not evidence.
 
         Returns (cve_objects_sample, total, error).
         """
@@ -344,7 +343,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                 # only place the exclusion is visible. `unmapped_sample`
                 # truncates at 15 and carries no reason, so without this the
                 # scan would decline a device silently, which is the half of
-                # LAW 5 that says state what you missed.
+                # rule that says state what you missed.
                 "ownership_rejected": [
                     f"{u['device']}: {u['reason']}"
                     for u in unmapped if u.get("reason")
@@ -445,7 +444,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                     "due": kev.get("dueDate"),
                     "overdue": _is_overdue(kev.get("dueDate"), now.date()),
                     "name": kev.get("vulnerabilityName"),
-                    # GH-537 (Joel: "Can you add what the fixes are for the
+                    # The request was "can you add what the fixes are for the
                     # remaining CVE exposures?"). fixed_in is only ever the
                     # confidently-known NVD bound, never a guess -- None here
                     # means NVD has not published a clean fix boundary yet,
@@ -491,7 +490,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
 
         # -- recent-window sweep, deliberately a SEPARATE number ------------
         #
-        # This replaces what packages/network_security_cve.yaml's seven
+        # This replaces what an earlier YAML package's seven
         # command_line sensors did -- count CVEs per product in a rolling
         # window -- except dispositioned against installed versions instead of
         # merely counted.
@@ -504,7 +503,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
         # bury the signal the wall tile exists to carry -- which is exactly the
         # defect the retired kev_estate.py described about the ICS advisory
         # feed IT replaced, and then committed in its own way by counting
-        # vendors owned rather than versions held (KAN-151).
+        # vendors owned rather than versions held.
         await self._sweep_window(assets, now, result)
         return result
 
@@ -543,7 +542,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
 
             # CROSS-CHECK: does our own comparator agree that the sample NVD
             # returned actually affects this version? A count taken on trust
-            # from the source being measured is not evidence (LAW 9). A
+            # from the source being measured is not evidence. A
             # disagreement is REPORTED, never silently resolved in either
             # direction -- whichever side is wrong, the operator needs to know
             # the number is not clean.
@@ -572,7 +571,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                     "sev": sev,
                     "score": score,
                     "published": (cve_obj.get("published") or "")[:10],
-                    # GH-537: same honest fixed_in as the KEV path above --
+                    # same honest fixed_in as the KEV path above --
                     # None means NVD has not published a clean fix bound yet.
                     "fixed_in": cpe.fixed_in(nodes),
                 })
@@ -587,7 +586,7 @@ class NvdEstateCoordinator(DataUpdateCoordinator):
                 # crit/high/unrated are counted over the SCORED SAMPLE, not
                 # over `total`. When `sampled` < `cves` they are FLOORS, and
                 # `sampled` is published beside them so nobody reads a floor as
-                # a count (LAW 5).
+                # a count.
                 "sampled": len(worst),
                 "crit": crit,
                 "high": high,

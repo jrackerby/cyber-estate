@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run every suite in tests/ and report a count.
 #
-# ASSERTS IT RAN SOMETHING. These suites moved repos (jrackerby/HA#668), and a
+# ASSERTS IT RAN SOMETHING. These suites moved repos, and a
 # path assumption that did not survive the move would present as a clean run
 # over zero files -- the vacuous green that is worse than a failure, because it
 # reports the component as proven when nothing was executed.

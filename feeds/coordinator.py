@@ -102,7 +102,7 @@ class EstateFeedsCoordinator(DataUpdateCoordinator):
             record = {
                 "entries": projected["entries"],
                 "count": projected["entry_count"],
-                # KAN-281/284: identity of the newest entry, for anything that
+                # identity of the newest entry, for anything that
                 # needs to say WHICH item it is talking about. Never omitted --
                 # the same reasoning as `disposition`, so a consumer can tell
                 # "no key" from "attribute missing".

@@ -4,7 +4,7 @@ THE PROBE MUST RUN FROM HOME ASSISTANT OR IT ANSWERS A DIFFERENT QUESTION.
 "Is the public key installed" is not a property of the host alone -- it is a
 property of a (client, key, user, host) tuple. Running this from the scanner
 box, or from a laptop, would produce a confident answer about a machine nobody
-asked about. LAW section 9: for a network service, the only proof is a client
+asked about. For a network service, the only proof is a client
 connecting from where it actually runs.
 
 SIX STATES, BECAUSE FOUR OF THEM ARE FAILURES THAT MEAN DIFFERENT THINGS and
@@ -15,7 +15,7 @@ lead to different actions:
                     fine; the key is not installed for this user.
   host_key_changed  the host key does not match the one on record. This is
                     either a reimage or a machine-in-the-middle, and it is
-                    never something to paper over -- see LAW section 13, where
+                    never something to paper over -- as elsewhere, where
                     exactly this trap makes a healthy kiosk look dead.
   unreachable       nothing answered on the port. The host is off or filtered.
   no_ssh            the scan found no ssh service here, so nothing was tried.

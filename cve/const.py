@@ -13,7 +13,8 @@ way: a vendor renaming a model, or NVD renaming a CPE product, breaks the join
 SILENTLY and the affected device simply stops being checked. That is why
 UNMAPPED DEVICES ARE COUNTED AND REPORTED rather than skipped -- see
 `sensor.nvd_estate_coverage`. A scan that keys on one pattern is not an audit
-(LAW section 5), so this one states what it misses.
+-- a scan keyed on one pattern is not an audit -- so this one states what it
+misses.
 
 ADDING A DEVICE CLASS: add a rule, then verify the CPE product actually exists
 in NVD before trusting it. A typo'd CPE product matches nothing and reads
@@ -23,7 +24,7 @@ exists to prevent. `tools/nvd_probe.py --cpe <product>` is the check.
 
 from __future__ import annotations
 
-# KAN-344 MERGE: was DOMAIN under the standalone nvd_estate integration.
+# MERGE NOTE: was DOMAIN under the standalone nvd_estate integration.
 # Kept as text for unique_id prefixes and device-registry identifiers; see
 # cve/entities.py. cyber_estate's top-level const.py now owns DOMAIN.
 CVE_NS = "nvd_estate"
@@ -37,12 +38,12 @@ NVD_CVE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 KEV_URL = ("https://www.cisa.gov/sites/default/files/feeds/"
            "known_exploited_vulnerabilities.json")
 
-# NVD asks for <= 120 days per query and the estate cares about the actionable
-# recent set. 90 days was inherited from the retired kev_estate.py (KAN-151) so
+# NVD asks for <= 120 days per query and the network cares about the actionable
+# recent set. 90 days was inherited from the retired kev_estate.py so
 # the two agreed while both existed; it is now this integration's own number.
 WINDOW_DAYS = 90
 
-# Polling. NVD data changes slowly and the estate's versions change slowly;
+# Polling. NVD data changes slowly and the network's versions change slowly;
 # there is nothing here worth a tight loop, and the rate limit is real.
 UPDATE_INTERVAL_HOURS = 6
 REQUEST_TIMEOUT = 45
@@ -126,7 +127,7 @@ ASSET_RULES = [
     },
 
     # --- Apple --------------------------------------------------------------
-    # iPad7,1 is the terminal-iPadOS unit LAW section 3 already knows about.
+    # iPad7,1 is a terminal-iPadOS unit, already risk-accepted.
     # It is NOT accepted-by-ruling the way the Android tablets are, so it is
     # tracked and will report honestly.
     {
@@ -203,7 +204,7 @@ ASSET_RULES = [
 # A ruling, not a config value. Anything here reports `accepted` and never
 # `affected` -- it is deliberately excluded from the actionable count, WITH the
 # reason carried on the entity so the acceptance is visible rather than a
-# silent omission. LAW section 11: a policy that declines a signal must say so.
+# silent omission: a policy that declines a signal must say so.
 # ---------------------------------------------------------------------------
 
 ACCEPTED_RULES = [
@@ -213,7 +214,7 @@ ACCEPTED_RULES = [
         "owner": "mobile_app",
         "reason": (
             "Android tablet patch status is formally risk-accepted "
-            "(LAW section 3). Not a coverage gap and not a defect."
+            "Risk-accepted. Not a coverage gap and not a defect."
         ),
         # PRODUCTS ARE DECLARED EVEN THOUGH THE DEVICE IS ACCEPTED, so a CVE
         # against Android dispositions as `accepted` rather than `unmonitored`.
@@ -225,8 +226,8 @@ ACCEPTED_RULES = [
         # The version is not compared and does not need to be right -- the
         # disposition is fixed by the ruling before any comparison happens.
         # sw_version on these is the MDM build ("1.60.1-emm"), not the Android
-        # version, and LAW section 3 says not to raise Android OS version at
-        # all unless Joel asks.
+        # version, and the rule says not to raise Android OS version at
+        # all unless asked directly.
         "products": [("google", "android", None)],
     },
 ]
@@ -234,7 +235,7 @@ ACCEPTED_RULES = [
 # Vendor keywords used to decide whether a KEV entry is even worth joining.
 # THIS IS NOW THE ONLY COPY. It was deliberately identical to kev_estate.py's
 # ESTATE list, because two lists meaning the same thing drift; that script was
-# retired with its sensor on 2026-08-14 (KAN-151) and this list inherited the
+# retired with its sensor on 2026-08-14 and this list inherited the
 # job. Microsoft stays excluded -- nothing here runs Windows.
 KEV_VENDOR_KEYWORDS = [
     "ubiquiti",

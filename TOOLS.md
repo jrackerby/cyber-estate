@@ -9,13 +9,12 @@ Scope, so this file does not grow into a second copy of somebody else's:
 
 - **Here**: instruments `cyber_estate` itself drives.
 - **NOT here**: Home Assistant's own instrument surface — config entries,
-  reloads, restarts, the recorder, the websocket API, `.storage` — lives in
-  `jrackerby/HA`'s `tools/work_docs/TOOLS.md`. Deploy hosts and the dashboard
-  apps' CI live in `jrackerby/ha-dashboard-kit`'s `TOOLS.md`.
-- **Never here**: a rule about the *work*, which is LAW and belongs in
-  `jrackerby/HA` whatever instrument it names; anything describing what
-  currently exists, which is `estate_snapshot`; anything unresolved, which is
-  an issue on this repository.
+  reloads, restarts, the recorder, the websocket API, `.storage`. Those belong
+  to whichever repository owns the instrument, not to this one.
+- **Never here**: a rule about how the work is done, rather than a fact about
+  an instrument; a description of what currently exists, which goes stale
+  faster than anything else in a file like this; and anything unresolved, which
+  is an issue on this repository.
 
 ## nmap inside the HA core container
 - **Present, privileged, NSE-STRIPPED**: `-sS`, `-sn`, `-O` work; `-sV` and `--script`

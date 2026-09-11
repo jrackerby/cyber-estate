@@ -28,10 +28,10 @@ from dateutil import tz as _tz
 # host that is not in an EDT zone decodes naive and is then read as 15:00 UTC,
 # four hours off, and ordering picks the wrong entry with no error anywhere.
 # Measured on a UTC runner, where it made the suite's own zone assertion report
-# the zone-blind answer (jrackerby/HA#472).
+# the zone-blind answer.
 #
 # Resolving them here makes the parse independent of what host it runs on, which
-# is the point -- the estate's host is America/New_York today and CI is not.
+# is the point -- the network's host is America/New_York today and CI is not.
 # dateutil also warns that the naive-fallback path will RAISE in a future
 # release, so this stops being merely wrong and starts being fatal.
 _TZINFOS = {
@@ -99,7 +99,7 @@ def format_date(value: str, date_format: str) -> str:
     _TZINFOS fixes does not exist on this path: a wrong-but-stable string still
     matches itself. Changing it is an ack migration, not a bug fix.
 
-    THAT RULING STANDS, AND THIS IS NOT A REVERSAL OF IT (GH-477). What changed
+    THAT RULING STANDS, AND THIS IS NOT A REVERSAL OF IT. What changed
     is only HOW the naive result is reached. The old form let dateutil fail to
     understand the abbreviation, which emits UnknownTimezoneWarning and which
     dateutil says a future release will turn into an EXCEPTION -- so the stored
@@ -242,7 +242,7 @@ def project_feed(
     the caller knows the HTTP status, and a 200 with an empty feed is a
     different fact from a 404 with an empty body (Playbook 16.15).
     """
-    # WRAPPED, NOT PASSED RAW, AND THIS IS A BLOCKING-CALL FIX (GH-569).
+    # WRAPPED, NOT PASSED RAW, AND THIS IS A BLOCKING-CALL FIX.
     # feedparser.parse() decides what it was handed by trying things in order,
     # and `open()` on the argument comes before "treat it as content". Handed
     # bytes, it therefore calls open() on the ENTIRE FEED DOCUMENT as though
@@ -260,7 +260,7 @@ def project_feed(
     # BOTH INPUT TYPES ARE WRAPPED, AND str IS NOT OPTIONAL. The live feeds
     # hand this bytes, which is the only shape the first version of this fix
     # covered -- and io.BytesIO(str) raises TypeError, so a str caller went
-    # from working to crashing. tools/test_estate_feeds_key.py in jrackerby/HA
+    # from working to crashing. tests/test_estate_feeds_key.py
     # passes a str and caught it. A str also blocks: it takes the same open()
     # path, so leaving it unwrapped would have fixed half the defect.
     #
@@ -270,7 +270,7 @@ def project_feed(
     # would have built for itself. Anything else would risk handing the parser
     # a different byte sequence than it used to see.
     #
-    # This does NOT touch LAW 3's ruling. feedparser stays exactly what that
+    # This does NOT touch the standing ruling. feedparser stays exactly what that
     # ruling made it -- an offline parser over content cyber_estate fetched
     # itself -- and no network path is added or restored here. Only the shape
     # of the argument changes.

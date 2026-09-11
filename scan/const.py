@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-# KAN-344 MERGE: was DOMAIN under the standalone network_inventory
+# MERGE NOTE: was DOMAIN under the standalone network_inventory
 # integration. This subpackage no longer owns a manifest/config entry --
 # cyber_estate's top-level const.py does. Files that need the REAL owning
 # domain (service registration/lookup, device-registry identifiers checked
@@ -35,7 +35,7 @@ CONF_MODE = "mode"
 MODE_AGENT = "agent"
 MODE_LOCAL = "local"
 
-# Local-mode scanning. TARGETS AND EXCLUDE ARE ALSO OPTIONS KEYS (GH-508):
+# Local-mode scanning. TARGETS AND EXCLUDE ARE ALSO OPTIONS KEYS:
 # collected in entry.data at setup, editable afterwards in entry.options, and
 # read through settings.resolve_settings by everything that needs them.
 CONF_TARGETS = "targets"
@@ -43,7 +43,7 @@ CONF_EXCLUDE = "exclude"
 CONF_DATADIR = "datadir"
 CONF_STALE_DAYS = "stale_days"
 
-# GH-508: the local sweep clocks, as entry.options keys. The unit is IN THE
+# the local sweep clocks, as entry.options keys. The unit is IN THE
 # KEY because these are stored as bare integers -- a key named `discovery_
 # interval` holding 60 cannot be told apart from one holding 60 seconds by
 # anything reading the entry later, and the two differ by a factor of sixty.
@@ -56,7 +56,7 @@ CONF_SSH_ENABLED = "ssh_probe_enabled"
 CONF_SSH_KEY = "ssh_key"
 CONF_SSH_USERS = "ssh_users"
 
-# KAN-294: options-flow field, mode-independent -- a MAC Joel has explicitly
+# options-flow field, mode-independent -- a MAC an operator has explicitly
 # decided is accounted for (e.g. a multi-NIC device's ARP-visible interface),
 # stored in entry.options so unknown_hosts can reach zero for a real,
 # explained case without being silently filtered (see join.py's JoinResult).
@@ -65,7 +65,7 @@ CONF_ACKNOWLEDGED_MACS = "acknowledged_macs"
 DEFAULT_PORT = 8765
 DEFAULT_NAME = "Network Inventory"
 
-# The estate's own conventions, offered as defaults so the common case is one
+# Common conventions, offered as defaults so the usual case is one
 # confirmation rather than four lookups. Every one is overridable; none is
 # hard-coded anywhere else (see the header).
 DEFAULT_SSH_KEY = "/config/.ssh/kiosk_key"
@@ -91,14 +91,14 @@ UPDATE_INTERVAL = timedelta(minutes=10)
 REQUEST_TIMEOUT = 30
 
 # LOCAL MODE RUNS TWO DIFFERENT SWEEPS ON TWO DIFFERENT CLOCKS, and conflating
-# them is the defect this estate already paid for once. A liveness sweep is
+# them is the defect this network already paid for once. A liveness sweep is
 # cheap and answers "what is on the network"; a service scan is expensive and
 # answers "what is it running". Running the cheap one often and the expensive
 # one rarely is correct -- what is NOT correct is letting the cheap one's
 # freshness stand in for the expensive one's, which is why they are timed,
 # stamped and reported separately all the way up to the sensors.
 #
-# THESE ARE DEFAULTS, NOT THE VALUES (GH-508). They were module constants, so
+# THESE ARE DEFAULTS, NOT THE VALUES. They were module constants, so
 # the one thing an operator most often wants to change about a scanner -- how
 # often it scans -- was a code edit and a restart, against this file's own
 # header. The live values come from settings.resolve_settings; nothing outside
@@ -117,7 +117,7 @@ DEFAULT_SERVICE_INTERVAL_MINUTES = 24 * 60
 #
 # The service ceiling is a fortnight: past that the port data is older than
 # DEFAULT_STALE_DAYS makes a host's whole record, so the sweep would be
-# scheduled less often than the estate forgets what it found.
+# scheduled less often than the network forgets what it found.
 MIN_DISCOVERY_INTERVAL_MINUTES = 5
 MAX_DISCOVERY_INTERVAL_MINUTES = 24 * 60
 MIN_SERVICE_INTERVAL_MINUTES = 60
@@ -130,9 +130,9 @@ LOCAL_TICK = timedelta(minutes=5)
 
 # The SSH probe runs against every host seen offering ssh. Kept well apart from
 # the scan clocks: it is cheap, but it authenticates against real hosts, and
-# doing that every five minutes would fill authentication logs estate-wide --
+# doing that every five minutes would fill authentication logs network-wide --
 # which is also why its floor is an hour rather than LOCAL_TICK. Configurable
-# on the same terms as the sweeps above (GH-508).
+# on the same terms as the sweeps above.
 DEFAULT_SSH_INTERVAL_MINUTES = 6 * 60
 MIN_SSH_INTERVAL_MINUTES = 60
 MAX_SSH_INTERVAL_MINUTES = 7 * 24 * 60

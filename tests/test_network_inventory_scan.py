@@ -3,7 +3,7 @@
 
 TWO FAILURE MODES ARE COVERED HERE AND BOTH ARE SILENT.
 
-The first is the one that cost this estate a night of service data: a liveness
+The first is the one that cost this network a night of service data: a liveness
 sweep emits no <ports> element, and reading that as "nothing is open" erases
 every port the previous scan found. Nothing throws, the inventory stays
 well-formed, and the loss is only visible by noticing that a number went down.
@@ -13,7 +13,7 @@ full capabilities, so a target or option that reaches the command line
 unvalidated is arbitrary privileged execution -- and a scan that quietly ran
 the wrong arguments still returns a clean XML document.
 
-THE SELF-TEST AT THE END PROVES THESE CHECKS CAN FAIL (LAW section 4). A gate
+THE SELF-TEST AT THE END PROVES THESE CHECKS CAN FAIL. A gate
 that has only ever seen good input has not been shown capable of reporting bad
 input.
 
@@ -27,7 +27,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# KAN-344: network_inventory merged into cyber_estate's scan/ subpackage.
+# network_inventory merged into cyber_estate's scan/ subpackage.
 PKG = os.path.join(HERE, "..", "scan")
 
 
@@ -251,7 +251,7 @@ print("\nplatforms must not subscript mode-specific config")
 # one of two modes. Platforms run in BOTH modes, so a subscript there is a
 # latent crash by construction; `_setup_agent` in __init__.py is the one place
 # entitled to use [] on agent-only keys, because it only runs in that mode.
-# KAN-344: renamed inside the scan/ subpackage to avoid colliding with
+# renamed inside the scan/ subpackage to avoid colliding with
 # cyber_estate's own top-level button.py/switch.py/sensor.py dispatchers.
 _PLATFORMS = [
     "button_entities.py", "switch_entities.py", "entities.py",
@@ -274,7 +274,7 @@ print("\nevery measured sensor must declare a state class")
 # A unit without a state class is the signature, and it is invisible at runtime
 # until the recorder notices. Checked on the source rather than by importing,
 # because sensor.py imports Home Assistant and this suite must not.
-# KAN-344: renamed from sensor.py to entities.py inside scan/, see
+# renamed from sensor.py to entities.py inside scan/, see
 # _PLATFORMS' comment above.
 _src = open(os.path.join(PKG, "entities.py")).read()
 _blocks = _src.split("SensorDescription(")[1:]
@@ -298,7 +298,7 @@ print("\nservices.yaml <-> options.py must not drift")
 # Parsed WITHOUT pyyaml: it is not guaranteed present on the machine running
 # these tests, and the shape here is regular enough that a targeted reader is
 # more honest than pulling in a dependency for one file.
-# KAN-344: services.yaml lives at the integration ROOT (cyber_estate/),
+# services.yaml lives at the integration ROOT (cyber_estate/),
 # not inside the scan/ subpackage -- HA only reads it from there.
 _yaml_path = os.path.join(PKG, "..", "services.yaml")
 with open(_yaml_path) as fh:

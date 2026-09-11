@@ -4,7 +4,7 @@
 BOTH MODULES EXIST TO KEEP AN ABSENCE OF EVIDENCE APART FROM EVIDENCE OF
 ABSENCE, and both fail silently when they get it wrong. A host nobody has
 port-scanned rendering as "not running ssh" throws nothing, logs nothing, and
-looks exactly like a working answer -- it is only wrong. On this estate that is
+looks exactly like a working answer -- it is only wrong. On this network that is
 37 of 78 hosts, so the wrong version of this logic would be wrong about nearly
 half the network while appearing entirely healthy.
 
@@ -22,7 +22,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# KAN-344: network_inventory merged into cyber_estate's scan/ subpackage.
+# network_inventory merged into cyber_estate's scan/ subpackage.
 PKG = os.path.join(HERE, "..", "scan")
 
 
@@ -137,7 +137,7 @@ check("never-scanned count is reported, not hidden",
       c["hosts_never_port_scanned"], 2)
 check("coverage percentage", c["coverage_pct"], 60.0)
 check("distinct services", c["distinct_services"], 2)
-check("empty estate does not divide by zero", sv.census({})["coverage_pct"], 0.0)
+check("an empty inventory does not divide by zero", sv.census({})["coverage_pct"], 0.0)
 
 print("\nssh_probe.host_runs_ssh -- tri-state")
 check("runs ssh", ssh.host_runs_ssh(scanned_with_ssh), True)

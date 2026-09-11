@@ -38,7 +38,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DISP_OK, FEEDS, FEEDS_NS
 from .coordinator import EstateFeedsCoordinator
 
-# KAN-344 MERGE: DOMAIN dropped. Under the old standalone estate_feeds
+# MERGE NOTE: DOMAIN dropped. Under the old standalone estate_feeds
 # integration this module did its own hass.data[DOMAIN][entry.entry_id]
 # lookup at platform setup. Merged into cyber_estate, the top-level
 # sensor.py already resolved the coordinator once for all three
@@ -53,7 +53,7 @@ def build_feed_sensors(coordinator: EstateFeedsCoordinator) -> list["FeedSensor"
     NOTE the absence of a second positional True on the old platform's
     async_add_entities. The retired standalone platform passed
     update_before_add=True, which put every unbounded fetch on the startup
-    critical path -- KAN-215. The coordinator's first refresh already ran in
+    critical path. The coordinator's first refresh already ran in
     cyber_estate's async_setup_entry, and it is bounded.
     """
     return [FeedSensor(coordinator, feed) for feed in FEEDS]

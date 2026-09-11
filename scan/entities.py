@@ -2,7 +2,7 @@
 
 TWO POPULATIONS, ON TWO KINDS OF DEVICE.
 
-ROLLUPS live on the scanner device: counts and freshness for the estate as a
+ROLLUPS live on the scanner device: counts and freshness for the network as a
 whole. They are what a dashboard reads and what gets trended.
 
 PER-ENDPOINT SENSORS live on the endpoint's own device: address, operating
@@ -81,7 +81,7 @@ def _unknown_attrs(view: InventoryView) -> dict[str, Any]:
     truncated reads as a complete one, and the operator would act on a shorter
     list than the count beside it.
 
-    ACKNOWLEDGED HOSTS ARE LISTED HERE, NEVER SILENTLY SUBTRACTED (KAN-294).
+    ACKNOWLEDGED HOSTS ARE LISTED HERE, NEVER SILENTLY SUBTRACTED.
     "we decided this one is fine" and "this one never appeared" must not
     collapse into the same zero -- an acknowledged host stays visible on
     this entity, in its own bucket, even though it no longer counts toward
@@ -164,7 +164,7 @@ SENSORS: tuple[NetworkInventorySensorDescription, ...] = (
         # this one is not the odd sensor out with no trend.
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda v: v.service_census["distinct_services"],
-        # The whole estate in one entity: which services run where, how many
+        # The whole network in one entity: which services run where, how many
         # hosts each is on, and how much of the network is unproven. Capped
         # nowhere, because the distinct-service count is bounded by what nmap
         # can name rather than by the size of the network -- 19 here.
@@ -220,7 +220,7 @@ def _open_ports_value(host: dict[str, Any]) -> Any:
 
     NONE, NOT ZERO, for an unscanned host. Zero is a measurement -- "we checked
     and nothing is open" -- and publishing it for a host nobody has scanned
-    puts a confident, wrong number on 37 of this estate's 78 hosts.
+    puts a confident, wrong number on 37 of this network's 78 hosts.
     """
     if not host_was_port_scanned(host):
         return None
@@ -271,7 +271,7 @@ ENDPOINT_SENSORS: tuple[EndpointSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         # THE PER-HOST COVERAGE READING. Unknown here is the honest state for a
         # host that has never been port-scanned, and it is what makes the
-        # estate's blind spot visible device by device rather than only as an
+        # blind spot visible device by device rather than only as an
         # aggregate nobody drills into.
         value_fn=lambda h: dt_util.parse_datetime(h.get("ports_scanned_at") or ""),
     ),
@@ -286,7 +286,7 @@ def setup_scan_sensors(
 ) -> None:
     """Set up the scanner rollups, then track endpoints as they appear.
 
-    KAN-344 MERGE: was this platform's own async_setup_entry, resolving
+    MERGE NOTE: was this platform's own async_setup_entry, resolving
     `coordinator = entry.runtime_data` itself. entry.runtime_data is now a
     dict of all three subsystems' coordinators under cyber_estate, so the
     top-level sensor.py resolves it once and passes it in directly.
