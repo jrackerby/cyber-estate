@@ -99,8 +99,8 @@ check("trailing comma drops nothing real", settings.split_list("a,"), ["a"])
 
 # --- defaults --------------------------------------------------------------
 print("\nan entry with no options resolves to the shipped defaults")
-base = settings.resolve_settings({T: "192.168.106.0/24"}, {})
-check("targets from data", list(base.targets), ["192.168.106.0/24"])
+base = settings.resolve_settings({T: "192.0.2.0/24"}, {})
+check("targets from data", list(base.targets), ["192.0.2.0/24"])
 check("exclude empty", list(base.exclude), [])
 check("discovery default", minutes(base.discovery_interval),
       const.DEFAULT_DISCOVERY_INTERVAL_MINUTES)
@@ -113,16 +113,16 @@ check("ssh default", minutes(base.ssh_interval),
 print("\nan options edit overrides what setup collected")
 # The motivating case: LAN01 Management added to a live entry.
 edited = settings.resolve_settings(
-    {T: "192.168.106.0/24", X: "192.168.106.1"},
-    {T: ["192.168.106.0/24", "192.168.101.0/24"], D: 15, S: 720, P: 1440},
+    {T: "192.0.2.0/24", X: "192.0.2.1"},
+    {T: ["192.0.2.0/24", "198.51.100.0/24"], D: 15, S: 720, P: 1440},
 )
 check("targets come from options",
-      list(edited.targets), ["192.168.106.0/24", "192.168.101.0/24"])
+      list(edited.targets), ["192.0.2.0/24", "198.51.100.0/24"])
 check("discovery interval is the edited one", minutes(edited.discovery_interval), 15)
 check("service interval is the edited one", minutes(edited.service_interval), 720)
 check("ssh interval is the edited one", minutes(edited.ssh_interval), 1440)
 check("an untouched key still falls back to data",
-      list(edited.exclude), ["192.168.106.1"])
+      list(edited.exclude), ["192.0.2.1"])
 
 print("\ntargets and exclude fall back by DIFFERENT rules, on purpose")
 check("emptied targets fall back rather than scanning nothing",
