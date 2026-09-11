@@ -12,6 +12,25 @@ entry.async_start_reauth(hass) itself (unchanged from the standalone
 integration); async_step_reauth_confirm here updates just CONF_API_KEY via
 data_updates, which merges into entry.data rather than replacing it, so a
 reauth never touches the scan half of the entry.
+
+THREE WAYS TO CHANGE A RUNNING ENTRY, AND THE SPLIT BETWEEN THEM IS BY WHERE
+THE VALUE IS READ, not by how important it looks:
+
+  * OPTIONS (`CyberEstateOptionsFlow`) -- scan scope, the sweep clocks, the
+    acknowledged MACs. The coordinator re-reads all three off the entry on
+    every tick, so these change live, with no reload and without touching the
+    inventory store that holds `first_seen` for the whole network.
+  * RECONFIGURE (`async_step_reconfigure`) -- the NVD key, the agent address
+    and token, the nmap data directory, the SSH settings. Every one of these
+    is read ONCE during setup, so a change is inert until the entry reloads,
+    and this flow reloads.
+  * REAUTH -- the NVD key alone, started by the coordinator rather than by a
+    person, when the key it has stops being accepted.
+
+NO KEY APPEARS IN TWO OF THEM. `resolve_settings` reads targets, exclude and
+the intervals out of `entry.options` ahead of `entry.data`, so a reconfigure
+form carrying targets would write a key the coordinator has stopped consulting
+-- the same value with two editors and one of them silently inert.
 """
 
 from __future__ import annotations
@@ -315,6 +334,174 @@ class CyberEstateConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id=MODE_AGENT, data_schema=STEP_AGENT, errors=errors
+        )
+
+    # -- reconfigure: the entry.data the options flow will not touch ------
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Edit the stored setup values in place, without rebuilding the entry.
+
+        WHAT IS HERE IS EXACTLY WHAT THE OPTIONS FLOW REFUSES, and the split is
+        not stylistic. `resolve_settings` reads targets, exclude and the three
+        sweep clocks out of `entry.options` FIRST and falls back to `entry.data`,
+        so a form here offering targets would edit a key the coordinator stops
+        consulting the moment the options flow has ever saved a scope -- a
+        control that looks live and does nothing, which is the failure that
+        module's own header is written to prevent. Those five keys have a live
+        editor already (Configure -> Networks to scan / How often to scan). This
+        step takes the rest: the NVD key, the agent connection, and the local
+        collector settings, none of which the options flow touches.
+
+        IT RELOADS AND THE OPTIONS FLOW DOES NOT, also deliberately. Every value
+        here is read once during setup -- the agent client is constructed from
+        the address and token, the nmap binary and data directory are resolved
+        then, the SSH prober is wired then -- so a change is inert until the
+        entry restarts. `async_update_reload_and_abort` is the honest ending for
+        a form whose values only take effect that way.
+        """
+        entry = self._get_reconfigure_entry()
+        if entry.data.get(CONF_MODE) == MODE_LOCAL:
+            return await self.async_step_reconfigure_local(user_input)
+        return await self.async_step_reconfigure_agent(user_input)
+
+    async def _revalidated_key(
+        self, entry, user_input: dict[str, Any]
+    ) -> str | None:
+        """Probe the NVD key only when it actually changed.
+
+        An unchanged key is not re-probed, and that is not laziness: NVD being
+        unreachable would otherwise refuse a form somebody opened to fix the
+        agent address, which is both unrelated and, quite possibly, the reason
+        they are here. A key that has NOT been edited was already validated when
+        it was accepted, and reauth exists for the case where it stops working.
+        """
+        key = user_input[CONF_API_KEY]
+        if key == entry.data.get(CONF_API_KEY):
+            return None
+        return await _validate_nvd_key(self.hass, key)
+
+    async def async_step_reconfigure_local(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            err = await self._revalidated_key(entry, user_input)
+            if err:
+                errors["base"] = err
+            else:
+                # The data directory is NOT refused when it is missing, matching
+                # setup exactly. `_async_setup_local` logs loudly and carries on
+                # -- port scanning still works without the script engine -- and a
+                # form that refused here while setup accepted would be the second
+                # validator disagreeing with the first, which is the trap
+                # `_validated_scope` exists to avoid on the other fields.
+                return self.async_update_reload_and_abort(
+                    entry, data_updates=user_input
+                )
+
+        current = entry.data
+        return self.async_show_form(
+            step_id="reconfigure_local",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_API_KEY, default=current.get(CONF_API_KEY, "")
+                    ): str,
+                    vol.Optional(
+                        CONF_DATADIR,
+                        default=current.get(CONF_DATADIR, DEFAULT_DATADIR),
+                    ): str,
+                    vol.Optional(
+                        CONF_STALE_DAYS,
+                        default=current.get(CONF_STALE_DAYS, DEFAULT_STALE_DAYS),
+                    ): vol.All(int, vol.Range(min=MIN_STALE_DAYS)),
+                    vol.Optional(
+                        CONF_SSH_ENABLED,
+                        default=current.get(CONF_SSH_ENABLED, True),
+                    ): bool,
+                    vol.Optional(
+                        CONF_SSH_KEY, default=current.get(CONF_SSH_KEY, DEFAULT_SSH_KEY)
+                    ): str,
+                    vol.Optional(
+                        CONF_SSH_USERS,
+                        default=current.get(CONF_SSH_USERS, DEFAULT_SSH_USERS),
+                    ): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure_agent(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            err = await self._revalidated_key(entry, user_input)
+            if err:
+                errors["base"] = err
+
+            host = user_input[CONF_HOST].strip()
+            if not errors:
+                # THE NEW CREDENTIAL IS EXERCISED ON THE CHANNEL IT WILL RUN ON,
+                # here rather than at the next refresh. A reconfigure that stored
+                # an unreachable address and reloaded would leave the entry in
+                # setup_retry with the dialog already closed, and the reason only
+                # in the log.
+                client = NetworkInventoryClient(
+                    session=async_get_clientsession(self.hass),
+                    host=host,
+                    port=user_input[CONF_PORT],
+                    token=user_input[CONF_TOKEN],
+                    use_tls=user_input.get(CONF_USE_TLS, False),
+                    verify_ssl=user_input.get(CONF_VERIFY_SSL, True),
+                )
+                try:
+                    await client.async_verify()
+                except InvalidAuth:
+                    errors["base"] = "invalid_auth"
+                except UnsupportedSchema as err_schema:
+                    _LOGGER.error("Unsupported agent schema: %s", err_schema)
+                    errors["base"] = "unsupported_schema"
+                except CannotConnect as err_conn:
+                    _LOGGER.debug("Cannot connect to agent: %s", err_conn)
+                    errors["base"] = "cannot_connect"
+                except Exception:  # noqa: BLE001 - config flows must not crash
+                    _LOGGER.exception("Unexpected error verifying agent")
+                    errors["base"] = "unknown"
+
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={**user_input, CONF_HOST: host}
+                )
+
+        current = entry.data
+        return self.async_show_form(
+            step_id="reconfigure_agent",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_API_KEY, default=current.get(CONF_API_KEY, "")
+                    ): str,
+                    vol.Required(CONF_HOST, default=current.get(CONF_HOST, "")): str,
+                    vol.Required(
+                        CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)
+                    ): int,
+                    vol.Required(CONF_TOKEN, default=current.get(CONF_TOKEN, "")): str,
+                    vol.Optional(
+                        CONF_USE_TLS, default=current.get(CONF_USE_TLS, False)
+                    ): bool,
+                    vol.Optional(
+                        CONF_VERIFY_SSL, default=current.get(CONF_VERIFY_SSL, True)
+                    ): bool,
+                }
+            ),
+            errors=errors,
         )
 
     # -- NVD key rotation / reauth ---------------------------------------

@@ -80,7 +80,7 @@ PORTSCAN_XML = """<?xml version="1.0"?>
 <nmaprun>
   <host>
     <status state="up"/>
-    <address addr="192.168.106.234" addrtype="ipv4"/>
+    <address addr="192.0.2.234" addrtype="ipv4"/>
     <address addr="DC:A6:32:11:22:33" addrtype="mac" vendor="Raspberry Pi"/>
     <hostnames><hostname name="PI4KIOSK04"/></hostnames>
     <ports>
@@ -105,7 +105,7 @@ DISCOVERY_XML = """<?xml version="1.0"?>
 <nmaprun>
   <host>
     <status state="up"/>
-    <address addr="192.168.106.234" addrtype="ipv4"/>
+    <address addr="192.0.2.234" addrtype="ipv4"/>
     <address addr="DC:A6:32:11:22:33" addrtype="mac" vendor="Raspberry Pi"/>
   </host>
 </nmaprun>
@@ -116,7 +116,7 @@ CLOSED_XML = """<?xml version="1.0"?>
 <nmaprun>
   <host>
     <status state="up"/>
-    <address addr="192.168.106.234" addrtype="ipv4"/>
+    <address addr="192.0.2.234" addrtype="ipv4"/>
     <address addr="DC:A6:32:11:22:33" addrtype="mac" vendor="Raspberry Pi"/>
     <ports><extraports state="closed" count="1000"/></ports>
   </host>
@@ -169,9 +169,9 @@ check("port age restamped by a real scan", inv[KEY]["ports_scanned_at"], "T3")
 
 print("\nbuild_args -- injection refusals")
 check("plain scan",
-      options.build_args(["192.168.106.0/24"]),
+      options.build_args(["192.0.2.0/24"]),
       ["-sS", "--open", "-oX", "-", "--top-ports", "1000", "-T4",
-       "--", "192.168.106.0/24"])
+       "--", "192.0.2.0/24"])
 check("versions + os",
       options.build_args(["10.0.0.1"], ["service_versions", "os_detect"]),
       ["-sS", "--open", "-oX", "-", "-sV", "--version-light", "-O",
@@ -220,7 +220,7 @@ raises("bad exclude refused",
 
 check("hostname target accepted", options.validate_target("nas.local"), "nas.local")
 check("octet range accepted",
-      options.validate_target("192.168.106.1-64"), "192.168.106.1-64")
+      options.validate_target("192.0.2.1-64"), "192.0.2.1-64")
 
 print("\ndescribe / cost")
 check("empty description", options.describe([]),

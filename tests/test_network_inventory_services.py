@@ -69,7 +69,7 @@ def check(label, got, want):
 def host(ports=None, scanned_at="2026-08-15T03:26:16+00:00", **kw):
     h = {
         "mac": "AA:BB:CC:DD:EE:FF",
-        "ip": "192.168.106.9",
+        "ip": "192.0.2.9",
         "status": "up",
         "ports": ports or [],
         "port_list": [f"{p['proto']}/{p['port']}" for p in (ports or [])],

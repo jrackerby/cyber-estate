@@ -46,6 +46,40 @@
           "verify_ssl": "Verify SSL certificate"
         }
       },
+      "reconfigure_local": {
+        "title": "Cyber Monitor settings",
+        "description": "Change the stored setup values without rebuilding the integration. Nothing here is lost when it saves — the scan history and every device's first-seen date survive.\n\nWhat you scan and how often are NOT here: those are live settings, edited under Configure, and a copy of them on this form would edit a value the scanner has stopped reading. This form reloads the integration when it saves, because everything on it is only read at startup.",
+        "data": {
+          "api_key": "NVD API key",
+          "datadir": "nmap data directory",
+          "stale_days": "Forget a device unseen for this many days",
+          "ssh_probe_enabled": "Check whether Home Assistant can SSH in",
+          "ssh_key": "SSH private key",
+          "ssh_users": "SSH usernames to try"
+        },
+        "data_description": {
+          "api_key": "Re-checked against NVD only if you change it, so a form opened to fix something else is not refused because NVD happens to be down.",
+          "datadir": "A directory holding nse_main.lua, nselib/ and scripts/. Leave blank to disable service and version detection.",
+          "stale_days": "A device switched off for longer than this is forgotten, along with the date it was first seen. Be generous.",
+          "ssh_users": "Tried in order against each host running SSH; the first that works is reported."
+        }
+      },
+      "reconfigure_agent": {
+        "title": "Cyber Monitor settings",
+        "description": "Change where the scanner agent is and how to authenticate to it. The new address and token are tried before anything is saved, so a typo is refused here rather than leaving the integration retrying with the dialog already closed.\n\nSaving reloads the integration. The agent's own scan targets and timer schedule live on that host and cannot be set from here.",
+        "data": {
+          "api_key": "NVD API key",
+          "host": "Scanner address",
+          "port": "Port",
+          "token": "Agent token",
+          "use_tls": "Connect over HTTPS",
+          "verify_ssl": "Verify the certificate"
+        },
+        "data_description": {
+          "api_key": "Re-checked against NVD only if you change it, so a form opened to fix the scanner address is not refused because NVD happens to be down.",
+          "verify_ssl": "Turn off only for a self-signed certificate on a trusted network."
+        }
+      },
       "reauth_confirm": {
         "title": "Replace the NVD API key",
         "description": "The current key was refused by NVD, or you are rotating it. Paste the new key below; it is validated before it is saved. This does not touch your scan configuration.",
@@ -64,7 +98,8 @@
     },
     "abort": {
       "already_configured": "Cyber Monitor is already set up. Use Reconfigure to rotate the NVD key.",
-      "reauth_successful": "The new key was accepted and the integration reloaded."
+      "reauth_successful": "The new key was accepted and the integration reloaded.",
+      "reconfigure_successful": "Saved. The integration reloaded with the new settings."
     }
   },
   "options": {

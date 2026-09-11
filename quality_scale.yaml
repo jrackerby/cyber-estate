@@ -1,0 +1,280 @@
+# Integration Quality Scale gap-list for cyber_estate.
+#
+# WHY THIS FILE IS HAND-WRITTEN AND NOT A DECLARATION. hassfest never checks a
+# CUSTOM component against the quality scale: `validate_iqs_file` opens with
+# `if not integration.core: return`, so this file goes unread, while
+# manifest.json's schema still ACCEPTS a `quality_scale` key. A tier declared
+# there would be a self-claim with no gate behind it, green forever. So there is
+# no `quality_scale` key in the manifest, and this file is an honest gap-list
+# instead -- the only thing that can be honest here is a written one.
+#
+# Rule names and tiers are the ones in `ALL_RULES` in home-assistant/core's
+# script/hassfest/quality_scale.py, read from that source rather than from the
+# docs page, which names the tiers and not the rules.
+#
+# TARGET IS SILVER, not Bronze. This integration polls hosts on the network over
+# nmap and ssh and fetches from NVD and CISA KEV -- it reads devices and
+# services, which is the line above which Silver is the target.
+#
+# Statuses: `done` means it passes today. `todo` means it does not, and the
+# comment says what would make it pass. `exempt` means the rule does not govern
+# here, and the comment carries the reason -- a rule applied where it merely
+# sounds relevant is worth as much as a rule skipped where it governs.
+#
+# GOLD AND PLATINUM ARE NOT LISTED. They are outside the declared target, and
+# listing them would turn a gap-list into a wish-list. The one gold rule with a
+# ticket against it is named at the bottom, because it is being worked.
+
+rules:
+  # ------------------------------------------------------------------ bronze
+
+  action-setup:
+    status: todo
+    comment: >-
+      `custom_scan` and `scan_device` are registered from `async_register_services`,
+      which `async_setup_scan` calls out of `async_setup_entry` -- so the actions
+      do not exist until an entry loads, and an automation referencing one fails
+      validation while the entry is retrying. They belong in `async_setup`, with
+      the entry lookup moved inside the handler (it already sweeps every entry of
+      the domain via `runtime.scan_coordinators`, so the handler is nearly there).
+
+  appropriate-polling:
+    status: done
+    comment: >-
+      Three coordinators, three intervals matched to their sources: feeds on
+      SCAN_INTERVAL_SECONDS, cve on UPDATE_INTERVAL_HOURS (NVD publishes on a
+      daily-ish cadence and rate-limits hard), and scan on operator-set discovery
+      and service intervals, both clamped in `scan/settings.py` so a hand-edited
+      `.storage` cannot produce a sweep that never stops.
+
+  brands:
+    status: todo
+    comment: >-
+      No entry in home-assistant/brands, so Home Assistant renders no icon or
+      logo for this integration. Needs either brand artwork committed here or an
+      accepted PR against that repository; hacs/action's `brands` check is
+      ignored in validate.yml for exactly this reason, and un-ignoring it is the
+      signal that this is fixed.
+
+  common-modules:
+    status: todo
+    comment: >-
+      Partly. Each subsystem keeps its coordinator in `<sub>/coordinator.py` and
+      scan has a real base entity in `scan/entity.py`, but `feeds/entities.py`
+      and `cve/entities.py` each define their base class inline. Moving those two
+      to `entity.py` beside their coordinators finishes it.
+
+  config-flow:
+    status: done
+    comment: >-
+      `CyberEstateConfigFlow` -- NVD key, then a scan-mode menu, then one entry.
+      Field labels and descriptions are in strings.json with translations in
+      step.
+
+  config-flow-test-coverage:
+    status: todo
+    comment: >-
+      There is no Home Assistant test harness in this repo at all. The seven
+      suites under tests/ are a PURE layer by design: they load `scan/` and
+      `feeds/` modules by path and never import homeassistant, so a red result is
+      attributable to a decision here rather than to a core release moving
+      underneath. That buys attributability and costs exactly this rule --
+      config_flow.py imports homeassistant and voluptuous at module scope and is
+      therefore unreachable from the pure layer. Closing this means adding
+      `pytest-homeassistant-custom-component` as a SECOND, separately declared
+      suite, not converting the existing one.
+
+  dependency-transparency:
+    status: done
+    comment: >-
+      `feedparser==6.0.11` and `python-dateutil>=2.8.2`, both published on PyPI
+      with public source and both pinned in tests/requirements.txt to what the
+      manifest ships, so the suite judges the code against the versions Home
+      Assistant will actually install.
+
+  docs-actions:
+    status: done
+    comment: >-
+      README "Actions" documents `cyber_estate.custom_scan` and
+      `cyber_estate.scan_device`, including the mutually-exclusive timing flags.
+      services.yaml carries the per-field text Home Assistant renders.
+
+  docs-conditions:
+    status: exempt
+    comment: The integration provides no conditions.
+
+  docs-high-level-description:
+    status: done
+    comment: README opens with what the integration is for.
+
+  docs-installation-instructions:
+    status: done
+    comment: >-
+      README "Install" -- HACS custom-repository path, and why the integration
+      sits at the repository root (`content_in_root: true`).
+
+  docs-removal-instructions:
+    status: done
+    comment: >-
+      README "Removal", including what removing the entry destroys: scan's
+      inventory store goes with it via `async_remove_entry`, and `first_seen` for
+      every device on the network is in that store.
+
+  docs-triggers:
+    status: exempt
+    comment: The integration provides no triggers.
+
+  entity-event-setup:
+    status: exempt
+    comment: >-
+      Every entity is a `CoordinatorEntity`. Nothing here subscribes to an
+      external event stream, so there is no subscription whose lifetime has to be
+      bound to `async_added_to_hass`.
+
+  entity-unique-id:
+    status: done
+    comment: >-
+      All five entity families set `_attr_unique_id`: feeds by feed key, cve by
+      sensor key, scan's scanner and per-endpoint entities by entry id or MAC plus
+      description key.
+
+  has-entity-name:
+    status: todo
+    comment: >-
+      True everywhere except `feeds/entities.py`, which sets it False on purpose
+      and assigns `self.entity_id` explicitly to pin `sensor.cdc_domestic_alerts`
+      and `sensor.cisa_advisories`. Those ids have named consumers, and Home
+      Assistant never re-mints an id once the registry holds it, so flipping this
+      is a migration for those consumers rather than an attribute edit. Recorded
+      as an open gap and not as an exemption: the rule governs, and what is
+      blocking it is a cost, not an argument.
+
+  runtime-data:
+    status: todo
+    comment: >-
+      `entry.runtime_data` is used and has exactly one accessor (`runtime.py`,
+      after GH-707), but it holds a plain `dict` of three coordinators and there
+      is no `type CyberEstateConfigEntry = ConfigEntry[CyberEstateData]` alias, so
+      nothing is type-checked at the boundary. A frozen dataclass plus the
+      subscripted alias would close it without changing the one-door shape.
+
+  test-before-configure:
+    status: done
+    comment: >-
+      The NVD key is probed against a known CVE before it is accepted -- an
+      unauthenticated NVD request still succeeds at a lower rate limit, so a
+      typo'd key does not announce itself by failing, it announces itself hours
+      later looking like an outage. Agent mode calls `client.async_verify()`;
+      local mode resolves the nmap binary. Each validates the channel it will
+      actually run on.
+
+  test-before-setup:
+    status: exempt
+    comment: >-
+      scan complies: `_async_setup_local` raises `ConfigEntryNotReady` when nmap
+      is absent. feeds and cve deliberately never raise, on a recorded ruling: a
+      monitor that disappears with its subject cannot report the subject down, so
+      an unreadable source is a disposition the entities publish, not a setup
+      failure. That is a deviation with a citation, not an omission -- and it is
+      the reason `async_refresh()` is used where
+      `async_config_entry_first_refresh()` would otherwise be idiomatic.
+
+  unique-config-entry:
+    status: done
+    comment: >-
+      `single_config_entry: true` in the manifest, plus `async_set_unique_id` and
+      `_abort_if_unique_id_configured` in the user step as defence in depth.
+
+  # ------------------------------------------------------------------ silver
+
+  action-exceptions:
+    status: todo
+    comment: >-
+      Both actions raise rather than failing silently, but they raise
+      `HomeAssistantError` for everything. Faults caused by what the caller typed
+      -- an unparseable target, a device id that belongs to no scannable device,
+      the two timing flags set together -- should be `ServiceValidationError`, and
+      all of them should carry `translation_key`/`translation_domain` rather than
+      an English string built at the raise site.
+
+  config-entry-unloading:
+    status: done
+    comment: >-
+      `async_unload_entry` unloads all three platforms and tears scan down;
+      the options-update listener is registered through `entry.async_on_unload`.
+
+  docs-configuration-parameters:
+    status: done
+    comment: >-
+      README "Configuration" covers the options flow step by step, and every
+      field carries `data_description` text in strings.json, which is what the
+      operator actually reads in the dialog.
+
+  docs-installation-parameters:
+    status: done
+    comment: >-
+      README "Configuration" names what the setup flow asks for in each mode;
+      strings.json carries the per-field descriptions.
+
+  entity-unavailable:
+    status: exempt
+    comment: >-
+      Deliberate and load-bearing. Entities stay available and publish the
+      unreadable state as a value, because a monitor that goes unavailable with
+      the thing it monitors cannot report that thing down -- `ok at zero` and
+      `could not read` are different values at the source and must not collapse.
+      Same recorded ruling as test-before-setup. The scan coordinator DOES raise
+      `UpdateFailed` on an agent it cannot reach, which is the case this contract
+      does not cover: there the subject is the agent itself.
+
+  integration-owner:
+    status: done
+    comment: "`codeowners: [\"@jrackerby\"]` in the manifest."
+
+  log-when-unavailable:
+    status: todo
+    comment: >-
+      Not implemented. `scan/coordinator.py` warns on EVERY failed sweep, so a
+      scanner down overnight writes one line per interval, and there is no INFO
+      on recovery at all. What is owed is once at the crossing and once on
+      recovery, deduped on a stable condition token rather than on the message --
+      a count or a member list inside the compared string turns one condition
+      into a new line every time membership moves. It must also be gated on Home
+      Assistant reaching RUNNING, and the gate must not RECORD while silent, or a
+      fault present through startup never logs at all.
+
+  parallel-updates:
+    status: todo
+    comment: >-
+      No platform module defines `PARALLEL_UPDATES`. Every entity here is
+      coordinator-driven and read-only, so the correct value is 0, but the rule
+      asks for it to be stated rather than inferred -- button and switch write,
+      and those two need a real answer rather than a copied zero.
+
+  reauthentication-flow:
+    status: done
+    comment: >-
+      `async_step_reauth` / `async_step_reauth_confirm` re-take the NVD key, and
+      `cve/coordinator.py` calls `entry.async_start_reauth` itself when the key
+      stops working. The confirm step uses `data_updates`, which MERGES into
+      `entry.data`, so a reauth cannot clear the scan half of the entry. The
+      agent token has no reauth path -- it is a fixed shared secret, and a wrong
+      one is a setup failure rather than an expiry.
+
+  test-coverage:
+    status: todo
+    comment: >-
+      Seven suites run on every push and none of them measure coverage, so the
+      number this rule asks about is unknown rather than low. They cover the pure
+      layer well -- version comparison, CPE matching, feed date parsing, nmap
+      argument building, the scan settings resolver, the runtime_data accessor --
+      and cover the coordinators, the config flow and the entity classes not at
+      all, because those import homeassistant. Same second-suite dependency as
+      config-flow-test-coverage.
+
+# GOLD, listed only because it is being worked: `reconfiguration-flow`. The
+# options flow already edits scan scope, the sweep clocks and the acknowledged
+# MACs in place, without a reload and without touching the inventory store. What
+# it deliberately does not touch is `entry.data` -- the agent address and token,
+# the nmap data directory, the ssh settings -- and those still need the entry
+# rebuilt. Tracked on this repository rather than duplicated here.
