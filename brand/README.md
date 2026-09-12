@@ -52,18 +52,48 @@ Taken from the artwork, not chosen: blue `#2AB7EC`, grey `#818181`. Note these
 are **not** Home Assistant's own `#18BCF2` / `#44739E` — close, deliberately not
 identical, and nothing here should be recoloured to match them.
 
-## Two separate places a brand image is read from, and only one of them is here
+## Home Assistant serves these itself. No `home-assistant/brands` PR is needed.
 
-- **HACS's brands check** reads `brand/icon.png` out of this repository —
-  `content_in_root` in `hacs.json` is what puts it at the root rather than under
-  a component directory. That is what lets `.github/workflows/validate.yml` run
-  the check instead of ignoring it.
-- **The Home Assistant frontend** does not read this repository at all. It loads
-  `https://brands.home-assistant.io/<domain>/icon.png`, so the icon appears
-  beside the integration in the UI only after a PR against
-  `home-assistant/brands` lands `icon.png` and `icon@2x.png` under
-  **`custom_integrations/cyber_estate/`** — the *domain*, which is
-  `cyber_estate` and not the repository name. That PR has not been opened.
+**This reverses what this file said when it was written**, which was that the
+frontend reads only `brands.home-assistant.io` and the icon appears in the UI
+only after a PR lands under `custom_integrations/cyber_estate/`. That was true
+through HA 2026.2 and is not true now — the brands repository's own README
+marks `custom_integrations` a **legacy folder** as of 2026.3.0.
+
+Read out of `homeassistant/components/brands` rather than inferred:
+`BrandsIntegrationView` serves `/api/brands/integration/{domain}/{image}` and
+tries a custom integration's own files **first**, ahead of the CDN.
+
+```python
+if not integration.has_branding:
+    return None
+brand_dir = Path(integration.file_path) / "brand"
+```
+
+Three consequences worth knowing:
+
+- **`has_branding` is `"brand" in self._top_level_files`** (`homeassistant/loader.py`).
+  A directory named `brand`, and nothing else — no `manifest.json` key opts in,
+  and none can opt out.
+- **`ALLOWED_IMAGES` is exactly `icon.png`, `logo.png`, `icon@2x.png`,
+  `logo@2x.png` and their `dark_` prefixes.** Anything else in this directory is
+  never served; it is shipped weight and nothing more.
+- **`content_in_root` puts this directory exactly where that code looks.** HACS
+  installs the repository root to `custom_components/cyber_estate/`, so `brand/`
+  lands at `custom_components/cyber_estate/brand/` — which is
+  `Path(integration.file_path) / "brand"` verbatim.
+
+So the same four files answer both readers:
+
+- **HACS's brands check** reads `brand/icon.png` out of this repository at build
+  time, which is what lets `.github/workflows/validate.yml` run that check
+  instead of ignoring it.
+- **The running instance** reads the same file off disk at request time.
+
+`has_branding` is a `cached_property` and the custom-component set is cached at
+load, so **a restart — not a reload — is what makes a newly added `brand/`
+directory visible.** Shipping it is a release: HACS upgrades from releases, and
+`release.yml` tags on a `manifest.json` version change.
 
 ## Rebuilding
 
