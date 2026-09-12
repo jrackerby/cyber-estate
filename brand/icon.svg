@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Cyber Monitor">
+  <title>Cyber Monitor</title>
+  <defs><clipPath id="icon-shield"><path d="M 138,176 H 374 A 18,18 0 0 1 392,194 V 300 C 392,374 330,418 256,444 C 182,418 120,374 120,300 V 194 A 18,18 0 0 1 138,176 Z"/></clipPath></defs>
+  <g>
+    <!-- the house: left half Home Assistant blue, right half HA slate -->
+    <g fill="none" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 256,40 L 40,256 L 40,436 Q 40,470 74,470 L 256,470" stroke="#18BCF2"/>
+      <path d="M 256,40 L 472,256 L 472,436 Q 472,470 438,470 L 256,470" stroke="#44739E"/>
+    </g>
+    <!-- the shield is wired to the floor of the house, not floating in it -->
+    <path d="M 256,432 V 462" stroke="#18BCF2" stroke-width="13" stroke-linecap="round"/>
+    <!-- shield: a white keyline lifts it off the roof, then the two halves -->
+    <path d="M 138,176 H 374 A 18,18 0 0 1 392,194 V 300 C 392,374 330,418 256,444 C 182,418 120,374 120,300 V 194 A 18,18 0 0 1 138,176 Z" fill="#ffffff" stroke="#ffffff" stroke-width="20" stroke-linejoin="round"/>
+    <g clip-path="url(#icon-shield)">
+      <rect x="116" y="172" width="140" height="276" fill="#18BCF2"/>
+      <rect x="256" y="172" width="140" height="276" fill="#44739E"/>
+    </g>
+    <path d="M 256,176 V 438" stroke="#ffffff" stroke-width="11"/>
+    <!-- what is on the network: routed traces terminating in nodes -->
+    <g fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 140,214 H 178 L 210,246"/>
+      <path d="M 132,272 H 162 L 194,304"/>
+      <path d="M 144,338 H 170 L 198,366"/>
+      <circle cx="222" cy="258" r="11" stroke-width="10"/>
+      <circle cx="206" cy="316" r="11" stroke-width="10"/>
+      <circle cx="210" cy="378" r="11" stroke-width="10"/>
+    </g>
+    <!-- what is being protected -->
+    <g fill="#ffffff">
+      <circle cx="324" cy="296" r="22"/>
+      <path d="M 313,311 L 306,358 H 342 L 335,311 Z"/>
+    </g>
+    <circle cx="256" cy="470" r="12" fill="#ffffff" stroke="#18BCF2" stroke-width="11"/>
+  </g>
+</svg>

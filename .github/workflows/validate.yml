@@ -150,7 +150,14 @@ jobs:
           # from the DEFAULT BRANCH, which made the LICENSE invisible while it
           # sat on the branch that added it.
           #
-          # `brands` stays ignored: it needs either brand/icon.png committed
-          # here or an accepted PR against home-assistant/brands, and until one
-          # of those exists the check can only ever fail.
-          ignore: brands
+          # `brands` is NO LONGER IGNORED. Its validator (hacs/integration,
+          # validate/brands.py) short-circuits green on a local asset before it
+          # ever queries brands.home-assistant.io, and the path it looks for is
+          # `brand/icon.png` precisely because hacs.json sets content_in_root.
+          # That file is committed now, so the check has something to read and
+          # ignoring it would only hide a future deletion of it.
+          #
+          # This proves nothing about the Home Assistant FRONTEND, which reads
+          # brands.home-assistant.io and not this repository: the icon appears
+          # beside the integration in the UI only once a PR against
+          # home-assistant/brands lands under custom_integrations/cyber_estate.
