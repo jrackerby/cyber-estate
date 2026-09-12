@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="brand/logo-dark.png">
-    <img src="brand/logo.png" alt="Cyber Monitor" width="440">
-  </picture>
+  <img src="brand/logo.png" alt="HA Cyber Monitor" width="300">
 </p>
 
 # Cyber Monitor
