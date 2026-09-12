@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logo-dark.png">
+    <img src="brand/logo.png" alt="Cyber Monitor" width="440">
+  </picture>
+</p>
+
 # Cyber Monitor
 
 Answers one question in Home Assistant: **is anything on this network a problem
