@@ -157,7 +157,11 @@ jobs:
           # That file is committed now, so the check has something to read and
           # ignoring it would only hide a future deletion of it.
           #
-          # This proves nothing about the Home Assistant FRONTEND, which reads
-          # brands.home-assistant.io and not this repository: the icon appears
-          # beside the integration in the UI only once a PR against
-          # home-assistant/brands lands under custom_integrations/cyber_estate.
+          # This check is about the STORE listing. The running instance is a
+          # separate reader of the same file and needs no PR anywhere:
+          # homeassistant/components/brands serves a custom integration's own
+          # brand/ directory ahead of the CDN, gated on loader.py's
+          # has_branding ("brand" in top-level files), and content_in_root puts
+          # this repository's brand/ at exactly the path that code looks in.
+          # brands.home-assistant.io's custom_integrations folder is legacy as
+          # of HA 2026.3.0 -- see brand/README.md.
